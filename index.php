@@ -551,7 +551,7 @@ function canAccessTab($tab, $user_role) {
 
             <!-- Statistics -->
             <?php if (canAccessTab('statistics', $user_role)): ?>
-            <a href="protected_statistics.php" class="service-card statistics">
+            <a href="/pizza/data.php" class="service-card statistics">
                 <span class="service-icon">📈</span>
                 <h3>Statistiky a Data</h3>
                 <p>Přehled statistik serveru, analýza dat a reporting. Detailní grafy a metriky výkonu systému.</p>
