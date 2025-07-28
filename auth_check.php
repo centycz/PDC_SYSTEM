@@ -1,22 +1,55 @@
 <?php
 session_start();
 
-// Nastavení hesla
-define('ADMIN_PASSWORD', 'diego');
+// Database connection
+try {
+    $pdo = new PDO('mysql:host=127.0.0.1;dbname=pizza_orders;charset=utf8mb4', 'pizza_user', 'pizza');
+    $pdo->setAttribute(PDO::ATTR_ERRMODE, PDO::ERRMODE_EXCEPTION);
+    $pdo->setAttribute(PDO::ATTR_DEFAULT_FETCH_MODE, PDO::FETCH_ASSOC);
+} catch(PDOException $e) {
+    $db_error = "Databáze není dostupná - přihlášení není možné.";
+}
 
 // Funkce pro ověření přihlášení
 function checkAuth() {
-    return isset($_SESSION['admin_logged_in']) && $_SESSION['admin_logged_in'] === true;
+    return isset($_SESSION['order_user']) && !empty($_SESSION['order_user']);
 }
 
 // Zpracování přihlášení
-if ($_POST['password'] ?? false) {
-    if ($_POST['password'] === ADMIN_PASSWORD) {
-        $_SESSION['admin_logged_in'] = true;
-        header('Location: ' . $_POST['redirect_url']);
-        exit;
+if (($_POST['password'] ?? false) && ($_POST['username'] ?? false)) {
+    $username = trim($_POST['username']);
+    $password = $_POST['password'];
+    
+    if (!isset($db_error)) {
+        try {
+            $stmt = $pdo->prepare("SELECT * FROM order_users WHERE username = ?");
+            $stmt->execute([$username]);
+            $user = $stmt->fetch();
+            
+            if ($user && password_verify($password, $user['password_hash'])) {
+                // Set session variables consistent with index.php
+                $_SESSION['order_user'] = $user['username'];
+                $_SESSION['order_user_id'] = $user['id'];
+                $_SESSION['order_full_name'] = $user['full_name'];
+                $_SESSION['is_admin'] = (bool)$user['is_admin'];
+                
+                // Set user role (check if column exists, fallback to is_admin logic)
+                if (isset($user['user_role'])) {
+                    $_SESSION['user_role'] = $user['user_role'];
+                } else {
+                    $_SESSION['user_role'] = $user['is_admin'] ? 'admin' : 'user';
+                }
+                
+                header('Location: ' . $_POST['redirect_url']);
+                exit;
+            } else {
+                $error = 'Nesprávné přihlašovací údaje!';
+            }
+        } catch(PDOException $e) {
+            $error = 'Chyba databáze: ' . $e->getMessage();
+        }
     } else {
-        $error = 'Nesprávné heslo!';
+        $error = $db_error;
     }
 }
 
@@ -133,8 +166,12 @@ if (!checkAuth()) {
             
             <form method="POST">
                 <div class="form-group">
+                    <label for="username">Uživatelské jméno:</label>
+                    <input type="text" id="username" name="username" required autofocus placeholder="např. admin">
+                </div>
+                <div class="form-group">
                     <label for="password">Heslo:</label>
-                    <input type="password" id="password" name="password" required autofocus>
+                    <input type="password" id="password" name="password" required placeholder="Zadejte heslo">
                 </div>
                 <input type="hidden" name="redirect_url" value="<?= htmlspecialchars($redirect_url) ?>">
                 <button type="submit" class="login-btn">Přihlásit se</button>
@@ -142,8 +179,8 @@ if (!checkAuth()) {
         </div>
         
         <script>
-            // Automatické zaměření na input
-            document.getElementById('password').focus();
+            // Automatické zaměření na username input
+            document.getElementById('username').focus();
         </script>
     </body>
     </html>
