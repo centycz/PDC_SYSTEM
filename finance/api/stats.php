@@ -1,5 +1,12 @@
 <?php
+session_start();
 require_once 'config.php';
+
+// Check if user is logged in
+if (!isset($_SESSION['order_user'])) {
+    http_response_code(401);
+    jsonResponse(false, null, 'User not authenticated');
+}
 
 $method = $_SERVER['REQUEST_METHOD'];
 

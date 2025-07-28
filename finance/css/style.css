@@ -29,6 +29,51 @@ body {
     font-size: 1.1em;
 }
 
+.user-info-header {
+    background: rgba(255,255,255,0.95);
+    border-radius: 12px;
+    padding: 15px 20px;
+    margin-top: 20px;
+    box-shadow: 0 4px 20px rgba(0,0,0,0.1);
+    backdrop-filter: blur(10px);
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    border: 1px solid rgba(255,255,255,0.2);
+}
+
+.user-welcome {
+    color: #2c3e50;
+    font-weight: 600;
+    font-size: 1.1em;
+}
+
+.user-role {
+    color: #666;
+    font-size: 0.9em;
+    font-weight: normal;
+}
+
+.back-btn {
+    background: linear-gradient(135deg, #667eea, #764ba2);
+    color: white;
+    text-decoration: none;
+    padding: 8px 16px;
+    border-radius: 20px;
+    font-size: 0.9rem;
+    font-weight: 600;
+    transition: all 0.3s ease;
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+}
+
+.back-btn:hover {
+    transform: translateY(-2px);
+    box-shadow: 0 4px 12px rgba(102, 126, 234, 0.4);
+    text-decoration: none;
+    color: white;
+}
+
 .container {
     max-width: 1200px;
     margin: 0 auto;
@@ -360,6 +405,12 @@ body {
 }
 
 /* Responsive design */
+.user-created {
+    font-size: 0.9em;
+    color: #666;
+    font-style: italic;
+}
+
 @media (max-width: 768px) {
     body {
         padding: 10px;
@@ -378,13 +429,29 @@ body {
         align-items: stretch;
     }
     
+    .user-info-header {
+        flex-direction: column;
+        gap: 15px;
+        text-align: center;
+    }
+    
     .transactions-table {
-        font-size: 14px;
+        font-size: 12px;
     }
     
     .transactions-table th,
     .transactions-table td {
-        padding: 8px;
+        padding: 6px 4px;
+    }
+    
+    .actions {
+        flex-direction: column;
+        gap: 4px;
+    }
+    
+    .btn-small {
+        font-size: 11px;
+        padding: 4px 8px;
     }
     
     .month-stats {

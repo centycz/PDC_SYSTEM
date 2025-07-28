@@ -140,6 +140,7 @@ class FinanceApp {
                     <th>Popis</th>
                     <th>Kategorie</th>
                     <th>Částka</th>
+                    <th>Vložil uživatel</th>
                     <th>Akce</th>
                 </tr>
             </thead>
@@ -156,6 +157,7 @@ class FinanceApp {
         const typeLabel = transaction.type === 'income' ? 'Příjem' : 'Výdaj';
         const amountClass = transaction.type === 'income' ? 'income' : 'expense';
         const amountPrefix = transaction.type === 'income' ? '+' : '-';
+        const userCreated = transaction.user_created || 'Neznámý';
         
         return `
             <tr>
@@ -168,6 +170,7 @@ class FinanceApp {
                 <td class="transaction-amount ${amountClass}">
                     ${amountPrefix}${this.formatCurrency(Math.abs(transaction.amount))}
                 </td>
+                <td class="user-created">${this.escapeHtml(userCreated)}</td>
                 <td>
                     <div class="actions">
                         <button class="btn btn-small btn-secondary" onclick="app.editTransaction(${transaction.id})">
