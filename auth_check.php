@@ -56,7 +56,7 @@ if (($_POST['password'] ?? false) && ($_POST['username'] ?? false)) {
 // Zpracování odhlášení
 if ($_GET['logout'] ?? false) {
     session_destroy();
-    header('Location: index.html');
+    header('Location: index.php');
     exit;
 }
 
