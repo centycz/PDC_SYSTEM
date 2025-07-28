@@ -145,7 +145,7 @@ if ($role_filter && in_array($role_filter, ['admin', 'ragazzi', 'user'])) {
 }
 
 if ($search) {
-    $where_conditions[] = "(username LIKE ? OR full_name LIKE ? OR email LIKE ?)";
+    $where_conditions[] = "(username LIKE ? OR full_name LIKE ? OR COALESCE(email, '') LIKE ?)";
     $search_param = "%$search%";
     $params[] = $search_param;
     $params[] = $search_param;
@@ -155,7 +155,25 @@ if ($search) {
 $where_sql = $where_conditions ? 'WHERE ' . implode(' AND ', $where_conditions) : '';
 
 try {
-    $stmt = $pdo->prepare("SELECT * FROM order_users $where_sql ORDER BY created_at DESC");
+    // Check if columns exist first
+    $columns = $pdo->query("SHOW COLUMNS FROM order_users")->fetchAll(PDO::FETCH_COLUMN);
+    $has_is_active = in_array('is_active', $columns);
+    $has_email = in_array('email', $columns);
+    $has_created_at = in_array('created_at', $columns);
+    $has_user_role = in_array('user_role', $columns);
+    
+    $select_columns = "id, username, full_name";
+    if ($has_email) $select_columns .= ", email";
+    if ($has_user_role) $select_columns .= ", user_role";
+    else $select_columns .= ", CASE WHEN is_admin = 1 THEN 'admin' ELSE 'user' END as user_role";
+    if ($has_is_active) $select_columns .= ", is_active";
+    else $select_columns .= ", 1 as is_active";
+    if ($has_created_at) $select_columns .= ", created_at";
+    else $select_columns .= ", NOW() as created_at";
+    $select_columns .= ", is_admin";
+    
+    $stmt = $pdo->prepare("SELECT $select_columns FROM order_users $where_sql ORDER BY " . 
+                         ($has_created_at ? "created_at" : "username") . " DESC");
     $stmt->execute($params);
     $users = $stmt->fetchAll();
 } catch (PDOException $e) {
@@ -553,13 +571,29 @@ try {
         <div class="stats-cards">
             <?php
             try {
-                $stmt = $pdo->query("SELECT 
-                    COUNT(*) as total,
-                    SUM(CASE WHEN user_role = 'admin' THEN 1 ELSE 0 END) as admins,
-                    SUM(CASE WHEN user_role = 'ragazzi' THEN 1 ELSE 0 END) as ragazzi,
-                    SUM(CASE WHEN user_role = 'user' THEN 1 ELSE 0 END) as users,
-                    SUM(CASE WHEN is_active = 1 THEN 1 ELSE 0 END) as active
-                FROM order_users");
+                // Check if columns exist first
+                $columns = $pdo->query("SHOW COLUMNS FROM order_users")->fetchAll(PDO::FETCH_COLUMN);
+                $has_user_role = in_array('user_role', $columns);
+                $has_is_active = in_array('is_active', $columns);
+                
+                if ($has_user_role && $has_is_active) {
+                    $stmt = $pdo->query("SELECT 
+                        COUNT(*) as total,
+                        SUM(CASE WHEN user_role = 'admin' THEN 1 ELSE 0 END) as admins,
+                        SUM(CASE WHEN user_role = 'ragazzi' THEN 1 ELSE 0 END) as ragazzi,
+                        SUM(CASE WHEN user_role = 'user' THEN 1 ELSE 0 END) as users,
+                        SUM(CASE WHEN is_active = 1 THEN 1 ELSE 0 END) as active
+                    FROM order_users");
+                } else {
+                    // Fallback for older database schema
+                    $stmt = $pdo->query("SELECT 
+                        COUNT(*) as total,
+                        SUM(CASE WHEN is_admin = 1 THEN 1 ELSE 0 END) as admins,
+                        0 as ragazzi,
+                        SUM(CASE WHEN is_admin = 0 THEN 1 ELSE 0 END) as users,
+                        COUNT(*) as active
+                    FROM order_users");
+                }
                 $stats = $stmt->fetch();
             } catch (PDOException $e) {
                 $stats = ['total' => 0, 'admins' => 0, 'ragazzi' => 0, 'users' => 0, 'active' => 0];
