@@ -559,6 +559,16 @@ function canAccessTab($tab, $user_role) {
             </a>
             <?php endif; ?>
 
+            <!-- User Management (Admin only) -->
+            <?php if ($user_role === 'admin'): ?>
+            <a href="admin/users_management.php" class="service-card system">
+                <span class="service-icon">👥</span>
+                <h3>Správa uživatelů</h3>
+                <p>Správa uživatelských účtů, rolí a oprávnění. Přidávání nových uživatelů a úprava existujících.</p>
+                <span class="service-status status-online">● Online</span>
+            </a>
+            <?php endif; ?>
+
             <!-- Database Management -->
             <?php if (canAccessTab('phpmyadmin', $user_role)): ?>
             <a href="phpmyadmin_redirect.php" class="service-card database">

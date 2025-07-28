@@ -83,11 +83,16 @@ $statistics_url = 'pizza/data.html';
     
     <div class="stats-container">
         <h2>Vítejte v admin sekci!</h2>
-        <p>Přístup povolen pro uživatele: <strong>Admin</strong></p>
+        <p>Přístup povolen pro uživatele: <strong><?= htmlspecialchars($_SESSION['order_full_name'] ?? 'Admin') ?></strong></p>
+        <p>Role: <strong><?= ucfirst($_SESSION['user_role'] ?? 'admin') ?></strong></p>
         <p>Datum a čas: <strong><?= date('Y-m-d H:i:s') ?></strong></p>
         
         <div class="admin-links">
-          
+            <?php if (isset($_SESSION['user_role']) && $_SESSION['user_role'] === 'admin'): ?>
+            <a href="admin/users_management.php" class="admin-link">
+                👥 Správa uživatelů
+            </a>
+            <?php endif; ?>
             <a href="<?= $statistics_url ?>" target="_blank" class="admin-link">
                 📈 Otevřít statistiky v novém okně
             </a>
