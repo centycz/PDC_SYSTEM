@@ -1,0 +1,732 @@
+<!DOCTYPE html>
+<html lang="cs">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Služby - Pizza dal Cortile | Mobilní pizza catering pro všechny příležitosti</title>
+    <meta name="description" content="Kompletní přehled našich pizza catering služeb - svatby, firemní akce, soukromé oslavy. Jsme první a největší poskytovatel mobilní pizzy v ČR.">
+    
+    <!-- Fonts -->
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&family=Playfair+Display:wght@400;500;600;700&display=swap" rel="stylesheet">
+    
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        :root {
+            --primary-color: #2d3436;
+            --accent-color: #e17055;
+            --text-light: #636e72;
+            --text-dark: #2d3436;
+            --bg-light: #ffeaa7;
+            --bg-cream: #fff8e1;
+            --white: #ffffff;
+            --shadow: 0 8px 30px rgba(0,0,0,0.08);
+            --border-radius: 12px;
+        }
+
+        body {
+            font-family: 'Inter', -apple-system, BlinkMacSystemFont, sans-serif;
+            line-height: 1.6;
+            color: var(--text-dark);
+            background: var(--white);
+            font-weight: 400;
+        }
+
+        h1, h2, h3, h4 {
+            font-family: 'Playfair Display', serif;
+            font-weight: 600;
+            line-height: 1.2;
+        }
+
+        /* Header */
+        .header {
+            background: var(--white);
+            position: fixed;
+            top: 0;
+            width: 100%;
+            z-index: 1000;
+            padding: 1.5rem 0;
+            box-shadow: 0 2px 20px rgba(0,0,0,0.05);
+        }
+
+        .nav-container {
+            max-width: 1400px;
+            margin: 0 auto;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            padding: 0 2rem;
+        }
+
+        .logo {
+            font-family: 'Playfair Display', serif;
+            font-size: 1.8rem;
+            font-weight: 700;
+            color: var(--text-dark);
+            text-decoration: none;
+            letter-spacing: -0.5px;
+        }
+
+        .nav-menu {
+            display: flex;
+            list-style: none;
+            gap: 2.5rem;
+            align-items: center;
+        }
+
+        .nav-menu a {
+            text-decoration: none;
+            color: var(--text-dark);
+            font-weight: 500;
+            font-size: 0.95rem;
+            transition: color 0.3s ease;
+        }
+
+        .nav-menu a:hover, .nav-menu a.active {
+            color: var(--accent-color);
+        }
+
+        .nav-cta {
+            background: var(--accent-color) !important;
+            color: var(--white) !important;
+            padding: 0.75rem 1.5rem;
+            border-radius: 25px;
+            font-weight: 600;
+            transition: all 0.3s ease;
+        }
+
+        .nav-cta:hover {
+            background: #d63447 !important;
+            transform: translateY(-1px);
+        }
+
+        /* Page Hero */
+        .page-hero {
+            background: linear-gradient(135deg, var(--bg-cream) 0%, var(--bg-light) 100%);
+            padding: 150px 0 80px;
+            text-align: center;
+        }
+
+        .container {
+            max-width: 1400px;
+            margin: 0 auto;
+            padding: 0 2rem;
+        }
+
+        .page-hero h1 {
+            font-size: clamp(2.5rem, 4vw, 3.5rem);
+            margin-bottom: 1rem;
+            color: var(--text-dark);
+        }
+
+        .page-hero p {
+            font-size: 1.2rem;
+            color: var(--text-light);
+            max-width: 600px;
+            margin: 0 auto;
+        }
+
+        /* Services Overview */
+        .services-overview {
+            padding: 6rem 0;
+            background: var(--white);
+        }
+
+        .section-header {
+            text-align: center;
+            margin-bottom: 4rem;
+        }
+
+        .section-badge {
+            display: inline-block;
+            background: var(--bg-light);
+            color: var(--text-dark);
+            padding: 0.5rem 1rem;
+            border-radius: 20px;
+            font-size: 0.85rem;
+            font-weight: 600;
+            margin-bottom: 1rem;
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+        }
+
+        .section-title {
+            font-size: clamp(2rem, 3vw, 2.5rem);
+            margin-bottom: 1rem;
+            color: var(--text-dark);
+        }
+
+        .section-subtitle {
+            font-size: 1.1rem;
+            color: var(--text-light);
+            max-width: 600px;
+            margin: 0 auto;
+            line-height: 1.7;
+        }
+
+        /* Service Detail Sections */
+        .service-detail {
+            padding: 6rem 0;
+        }
+
+        .service-detail:nth-child(even) {
+            background: var(--bg-cream);
+        }
+
+        .service-content {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 4rem;
+            align-items: center;
+        }
+
+        .service-text h2 {
+            font-size: clamp(2rem, 3vw, 2.5rem);
+            margin-bottom: 1rem;
+            color: var(--text-dark);
+        }
+
+        .service-subtitle {
+            font-size: 1.2rem;
+            color: var(--accent-color);
+            margin-bottom: 2rem;
+            font-style: italic;
+        }
+
+        .service-features {
+            margin-bottom: 2.5rem;
+        }
+
+        .feature-item {
+            display: flex;
+            align-items: flex-start;
+            gap: 1rem;
+            margin-bottom: 1.5rem;
+        }
+
+        .feature-icon {
+            font-size: 1.5rem;
+            min-width: 2rem;
+            margin-top: 0.25rem;
+        }
+
+        .feature-item h4 {
+            font-size: 1.1rem;
+            margin-bottom: 0.5rem;
+            color: var(--text-dark);
+        }
+
+        .feature-item p {
+            color: var(--text-light);
+            line-height: 1.6;
+        }
+
+        .pricing-info {
+            background: var(--white);
+            padding: 2rem;
+            border-radius: var(--border-radius);
+            border-left: 4px solid var(--accent-color);
+            box-shadow: var(--shadow);
+        }
+
+        .pricing-info h4 {
+            color: var(--accent-color);
+            margin-bottom: 0.5rem;
+            font-size: 1.2rem;
+        }
+
+        .pricing-info p {
+            color: var(--text-light);
+            font-size: 0.95rem;
+        }
+
+        .service-image {
+            position: relative;
+        }
+
+        .service-image img {
+            width: 100%;
+            border-radius: var(--border-radius);
+            box-shadow: var(--shadow);
+        }
+
+        /* Process Section */
+        .process-section {
+            padding: 6rem 0;
+            background: var(--white);
+        }
+
+        .process-steps {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+            gap: 2rem;
+            margin-top: 3rem;
+        }
+
+        .process-step {
+            text-align: center;
+            padding: 2rem 1rem;
+        }
+
+        .step-number {
+            width: 60px;
+            height: 60px;
+            background: var(--accent-color);
+            color: var(--white);
+            border-radius: 50%;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 1.5rem;
+            font-weight: 700;
+            margin: 0 auto 1.5rem;
+        }
+
+        .process-step h3 {
+            font-size: 1.2rem;
+            margin-bottom: 1rem;
+            color: var(--text-dark);
+        }
+
+        .process-step p {
+            color: var(--text-light);
+            line-height: 1.6;
+            font-size: 0.95rem;
+        }
+
+        /* CTA Section */
+        .cta-section {
+            padding: 6rem 0;
+            background: var(--accent-color);
+            color: var(--white);
+            text-align: center;
+        }
+
+        .cta-section h2 {
+            font-size: clamp(2rem, 3vw, 2.5rem);
+            margin-bottom: 1rem;
+        }
+
+        .cta-section p {
+            font-size: 1.1rem;
+            margin-bottom: 2rem;
+            opacity: 0.9;
+        }
+
+        .btn {
+            display: inline-flex;
+            align-items: center;
+            gap: 0.5rem;
+            padding: 1rem 2rem;
+            border-radius: 30px;
+            text-decoration: none;
+            font-weight: 600;
+            font-size: 1rem;
+            transition: all 0.3s ease;
+            border: none;
+            cursor: pointer;
+        }
+
+        .btn-primary {
+            background: var(--white);
+            color: var(--accent-color);
+            font-weight: 700;
+        }
+
+        .btn-primary:hover {
+            background: #f8f9fa;
+            transform: translateY(-2px);
+        }
+
+        /* Footer */
+        .footer {
+            background: var(--text-dark);
+            color: var(--white);
+            padding: 3rem 0 1rem;
+        }
+
+        .footer-content {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(250px, 1fr));
+            gap: 2rem;
+            margin-bottom: 2rem;
+        }
+
+        .footer-section h3 {
+            margin-bottom: 1rem;
+            color: var(--white);
+        }
+
+        .footer-section p,
+        .footer-section li {
+            color: #a0a0a0;
+            margin-bottom: 0.5rem;
+        }
+
+        .footer-section ul {
+            list-style: none;
+        }
+
+        .footer-section a {
+            color: #a0a0a0;
+            text-decoration: none;
+            transition: color 0.3s ease;
+        }
+
+        .footer-section a:hover {
+            color: var(--white);
+        }
+
+        .footer-bottom {
+            text-align: center;
+            padding-top: 2rem;
+            border-top: 1px solid #404040;
+            color: #a0a0a0;
+            font-size: 0.9rem;
+        }
+
+        /* Mobile */
+        .hamburger {
+            display: none;
+            flex-direction: column;
+            cursor: pointer;
+            padding: 5px;
+        }
+
+        .hamburger span {
+            width: 25px;
+            height: 2px;
+            background: var(--text-dark);
+            margin: 3px 0;
+            transition: 0.3s;
+            border-radius: 2px;
+        }
+
+        @media (max-width: 768px) {
+            .hamburger {
+                display: flex;
+            }
+
+            .nav-menu {
+                position: fixed;
+                left: -100%;
+                top: 90px;
+                flex-direction: column;
+                background: var(--white);
+                width: 100%;
+                text-align: center;
+                transition: 0.3s;
+                box-shadow: var(--shadow);
+                padding: 2rem 0;
+                gap: 1.5rem;
+            }
+
+            .nav-menu.active {
+                left: 0;
+            }
+
+            .service-content {
+                grid-template-columns: 1fr;
+                gap: 2rem;
+            }
+
+            .process-steps {
+                grid-template-columns: 1fr;
+            }
+        }
+    </style>
+</head>
+<body>
+    <header class="header">
+        <div class="nav-container">
+            <a href="index.html" class="logo">Pizza dal Cortile</a>
+            <nav>
+                <ul class="nav-menu">
+                    <li><a href="index.html">Domů</a></li>
+                    <li><a href="sluzby.html" class="active">Služby</a></li>
+                    <li><a href="menu.html">Menu</a></li>
+                    <li><a href="o-nas.html">O nás</a></li>
+                    <li><a href="kontakt.html" class="nav-cta">Objednat</a></li>
+                </ul>
+                <div class="hamburger">
+                    <span></span>
+                    <span></span>
+                    <span></span>
+                </div>
+            </nav>
+        </div>
+    </header>
+
+    <main>
+        <section class="page-hero">
+            <div class="container">
+                <h1>Naše služby</h1>
+                <p>Kompletní pizza catering pro každou příležitost</p>
+            </div>
+        </section>
+
+        <section class="services-overview">
+            <div class="container">
+                <div class="section-header">
+                    <div class="section-badge">Průkopníci mobilní pizzy</div>
+                    <h2 class="section-title">Pizza catering na míru</h2>
+                    <p class="section-subtitle">Od roku 2020 nabízíme jako první v České republice kompletní mobilní pizza catering. Naše služby pokrývají široké spektrum akcí - od intimních oslav po velké korporátní eventy.</p>
+                </div>
+            </div>
+        </section>
+
+        <section class="service-detail">
+            <div class="container">
+                <div class="service-content">
+                    <div class="service-text">
+                        <h2>Svatební catering</h2>
+                        <p class="service-subtitle">Udělejte ze svého velkého dne nezapomenutelný zážitek</p>
+                        
+                        <div class="service-features">
+                            <div class="feature-item">
+                                <span class="feature-icon">💍</span>
+                                <div>
+                                    <h4>Romantická atmosféra</h4>
+                                    <p>Naše mobilní pec vytvoří kouzelnou atmosféru s vůní čerstvé pizzy a show cookingem</p>
+                                </div>
+                            </div>
+                            <div class="feature-item">
+                                <span class="feature-icon">👥</span>
+                                <div>
+                                    <h4>Pro 50-500 hostů</h4>
+                                    <p>Zvládneme obsloužit svatby všech velikostí s profesionálním týmem</p>
+                                </div>
+                            </div>
+                            <div class="feature-item">
+                                <span class="feature-icon">⏰</span>
+                                <div>
+                                    <h4>Flexibilní časování</h4>
+                                    <p>Přizpůsobíme se vašemu svatebnímu programu - oběd, večeře nebo midnight snack</p>
+                                </div>
+                            </div>
+                            <div class="feature-item">
+                                <span class="feature-icon">🎨</span>
+                                <div>
+                                    <h4>Personalizace</h4>
+                                    <p>Speciální svatební menu, branded pizzy nebo pizzy s iniciály novomanželů</p>
+                                </div>
+                            </div>
+                        </div>
+
+                        <div class="pricing-info">
+                            <h4>Svatební balíčky od 89 Kč/osoba</h4>
+                            <p>Cena zahrnuje příjezd, setup, obsluhu a 3 druhy pizzy dle výběru</p>
+                        </div>
+                    </div>
+                    <div class="service-image">
+                        <img src="https://images.unsplash.com/photo-1519225421980-715cb0215aed?w=500&h=400&fit=crop&crop=center" alt="Svatební pizza catering" loading="lazy">
+                    </div>
+                </div>
+            </div>
+        </section>
+
+        <section class="service-detail">
+            <div class="container">
+                <div class="service-content">
+                    <div class="service-image">
+                        <img src="https://images.unsplash.com/photo-1556909114-f6e7ad7d3136?w=500&h=400&fit=crop&crop=center" alt="Firemní pizza catering" loading="lazy">
+                    </div>
+                    <div class="service-text">
+                        <h2>Firemní catering</h2>
+                        <p class="service-subtitle">Posílíme týmového ducha vaší firmy</p>
+                        
+                        <div class="service-features">
+                            <div class="feature-item">
+                                <span class="feature-icon">🏢</span>
+                                <div>
+                                    <h4>Přímo do firmy</h4>
+                                    <p>Přijedeme přímo do vaší kanceláře, na firemní pozemek nebo do pronajatého prostoru</p>
+                                </div>
+                            </div>
+                            <div class="feature-item">
+                                <span class="feature-icon">🤝</span>
+                                <div>
+                                    <h4>Team building</h4>
+                                    <p>Pizza cooking workshop pro zaměstnance - skvělá teamová aktivita</p>
+                                </div>
+                            </div>
+                            <div class="feature-item">
+                                <span class="feature-icon">📊</span>
+                                <div>
+                                    <h4>Prezentace a meetings</h4>
+                                    <p>Ideální pro business lunch, prezentace produktů nebo konference</p>
+                                </div>
+                            </div>
+                            <div class="feature-item">
+                                <span class="feature-icon">🎯</span>
+                                <div>
+                                    <h4>Flexibilní objednávky</h4>
+                                    <p>Pravidelné objednávky, vánoční párty, oslavy úspěchů</p>
+                                </div>
+                            </div>
+                        </div>
+
+                        <div class="pricing-info">
+                            <h4>Firemní balíčky od 79 Kč/osoba</h4>
+                            <p>Speciální ceny pro pravidelné klienty a větší objednávky</p>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </section>
+
+        <section class="service-detail">
+            <div class="container">
+                <div class="service-content">
+                    <div class="service-text">
+                        <h2>Soukromé oslavy</h2>
+                        <p class="service-subtitle">Každá oslava si zaslouží skvělou pizzu</p>
+                        
+                        <div class="service-features">
+                            <div class="feature-item">
+                                <span class="feature-icon">🎂</span>
+                                <div>
+                                    <h4>Narozeniny všech věků</h4>
+                                    <p>Od dětských oslavy po kulatá výročí - pizza baví všechny generace</p>
+                                </div>
+                            </div>
+                            <div class="feature-item">
+                                <span class="feature-icon">🎓</span>
+                                <div>
+                                    <h4>Promoce a úspěchy</h4>
+                                    <p>Oslavte své životní milníky s přáteli při čerstvé pizze</p>
+                                </div>
+                            </div>
+                            <div class="feature-item">
+                                <span class="feature-icon">🏡</span>
+                                <div>
+                                    <h4>Domácí prostředí</h4>
+                                    <p>Přijedeme na vaši zahradu, terasu nebo do domu s kompletním zařízením</p>
+                                </div>
+                            </div>
+                            <div class="feature-item">
+                                <span class="feature-icon">👶</span>
+                                <div>
+                                    <h4>Rodinné akce</h4>
+                                    <p>Křtiny, svatební výročí, rodinná setkání - pizza spojuje rodiny</p>
+                                </div>
+                            </div>
+                        </div>
+
+                        <div class="pricing-info">
+                            <h4>Soukromé akce od 69 Kč/osoba</h4>
+                            <p>Minimální objednávka 15 osob, dětské porce za poloviční cenu</p>
+                        </div>
+                    </div>
+                    <div class="service-image">
+                        <img src="https://images.unsplash.com/photo-1530023367847-a683933f4172?w=500&h=400&fit=crop&crop=center" alt="Soukromé oslavy s pizzou" loading="lazy">
+                    </div>
+                </div>
+            </div>
+        </section>
+
+        <section class="process-section">
+            <div class="container">
+                <div class="section-header">
+                    <div class="section-badge">Jak to funguje</div>
+                    <h2 class="section-title">Jednoduchý proces objednávky</h2>
+                    <p class="section-subtitle">Od první konzultace po vynikající pizzu na vaší akci</p>
+                </div>
+
+                <div class="process-steps">
+                    <div class="process-step">
+                        <div class="step-number">1</div>
+                        <h3>Konzultace</h3>
+                        <p>Společně naplánujeme vaši akci podle vašich představ a rozpočtu</p>
+                    </div>
+                    <div class="process-step">
+                        <div class="step-number">2</div>
+                        <h3>Příprava</h3>
+                        <p>Připravíme čerstvé těsto a všechny ingredience den před akcí</p>
+                    </div>
+                    <div class="process-step">
+                        <div class="step-number">3</div>
+                        <h3>Příjezd a setup</h3>
+                        <p>Přijedeme 60-90 minut před začátkem a vše připravíme</p>
+                    </div>
+                    <div class="process-step">
+                        <div class="step-number">4</div>
+                        <h3>Show cooking</h3>
+                        <p>Připravujeme pizzy živě před vašimi hosty v mobilní peci</p>
+                    </div>
+                    <div class="process-step">
+                        <div class="step-number">5</div>
+                        <h3>Úklid</h3>
+                        <p>Po akci vše uklidíme a odvezeme, vy si jen užíváte</p>
+                    </div>
+                </div>
+            </div>
+        </section>
+
+        <section class="cta-section">
+            <div class="container">
+                <h2>Připraveni objednat?</h2>
+                <p>Jsme rádi, že jste si vybrali průkopníky mobilní pizzy v ČR. Napište nám nebo zavolejte a naplánujeme vaši perfektní akci.</p>
+                <a href="kontakt.html" class="btn btn-primary">Získat cenovou nabídku</a>
+            </div>
+        </section>
+    </main>
+
+    <footer class="footer">
+        <div class="container">
+            <div class="footer-content">
+                <div class="footer-section">
+                    <h3>Pizza dal Cortile</h3>
+                    <p>První a největší poskytovatel mobilní pizza služby v České republice. Autentická neapolská pizza připravená přímo u vás.</p>
+                </div>
+                <div class="footer-section">
+                    <h3>Služby</h3>
+                    <ul>
+                        <li><a href="#svatební">Svatební catering</a></li>
+                        <li><a href="#firemní">Firemní akce</a></li>
+                        <li><a href="#soukromé">Soukromé oslavy</a></li>
+                        <li><a href="menu.html">Pizza menu</a></li>
+                    </ul>
+                </div>
+                <div class="footer-section">
+                    <h3>Kontakt</h3>
+                    <p>📞 +420 123 456 789</p>
+                    <p>✉️ info@pizzadalcortile.cz</p>
+                    <p>📍 Praha, Brno, Ostrava a okolí</p>
+                </div>
+            </div>
+            <div class="footer-bottom">
+                <p>&copy; 2025 Pizza dal Cortile. Všechna práva vyhrazena.</p>
+            </div>
+        </div>
+    </footer>
+
+    <script>
+        // Mobile menu toggle
+        document.querySelector('.hamburger').addEventListener('click', function() {
+            this.classList.toggle('active');
+            document.querySelector('.nav-menu').classList.toggle('active');
+        });
+
+        // Smooth scrolling
+        document.querySelectorAll('a[href^="#"]').forEach(anchor => {
+            anchor.addEventListener('click', function (e) {
+                e.preventDefault();
+                const target = document.querySelector(this.getAttribute('href'));
+                if (target) {
+                    target.scrollIntoView({
+                        behavior: 'smooth',
+                        block: 'start'
+                    });
+                }
+            });
+        });
+    </script>
+</body>
+</html>

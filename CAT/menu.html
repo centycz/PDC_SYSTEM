@@ -1,0 +1,943 @@
+<!DOCTYPE html>
+<html lang="cs">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Pizza Menu - Pizza dal Cortile | Autentické neapolské pizzy</title>
+    <meta name="description" content="Objevte naše menu autentických neapolských pizz připravených v mobilní peci. Klasické i moderní kombinace s nejlepšími italskými surovinami.">
+    
+    <!-- Fonts -->
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&family=Playfair+Display:wght@400;500;600;700&display=swap" rel="stylesheet">
+    
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        :root {
+            --primary-color: #2d3436;
+            --accent-color: #e17055;
+            --text-light: #636e72;
+            --text-dark: #2d3436;
+            --bg-light: #ffeaa7;
+            --bg-cream: #fff8e1;
+            --white: #ffffff;
+            --shadow: 0 8px 30px rgba(0,0,0,0.08);
+            --border-radius: 12px;
+        }
+
+        body {
+            font-family: 'Inter', -apple-system, BlinkMacSystemFont, sans-serif;
+            line-height: 1.6;
+            color: var(--text-dark);
+            background: var(--white);
+            font-weight: 400;
+        }
+
+        h1, h2, h3, h4 {
+            font-family: 'Playfair Display', serif;
+            font-weight: 600;
+            line-height: 1.2;
+        }
+
+        /* Header */
+        .header {
+            background: var(--white);
+            position: fixed;
+            top: 0;
+            width: 100%;
+            z-index: 1000;
+            padding: 1.5rem 0;
+            box-shadow: 0 2px 20px rgba(0,0,0,0.05);
+        }
+
+        .nav-container {
+            max-width: 1400px;
+            margin: 0 auto;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            padding: 0 2rem;
+        }
+
+        .logo {
+            font-family: 'Playfair Display', serif;
+            font-size: 1.8rem;
+            font-weight: 700;
+            color: var(--text-dark);
+            text-decoration: none;
+            letter-spacing: -0.5px;
+        }
+
+        .nav-menu {
+            display: flex;
+            list-style: none;
+            gap: 2.5rem;
+            align-items: center;
+        }
+
+        .nav-menu a {
+            text-decoration: none;
+            color: var(--text-dark);
+            font-weight: 500;
+            font-size: 0.95rem;
+            transition: color 0.3s ease;
+        }
+
+        .nav-menu a:hover, .nav-menu a.active {
+            color: var(--accent-color);
+        }
+
+        .nav-cta {
+            background: var(--accent-color) !important;
+            color: var(--white) !important;
+            padding: 0.75rem 1.5rem;
+            border-radius: 25px;
+            font-weight: 600;
+            transition: all 0.3s ease;
+        }
+
+        .nav-cta:hover {
+            background: #d63447 !important;
+            transform: translateY(-1px);
+        }
+
+        /* Page Hero */
+        .page-hero {
+            background: linear-gradient(135deg, var(--bg-cream) 0%, var(--bg-light) 100%);
+            padding: 150px 0 80px;
+            text-align: center;
+        }
+
+        .container {
+            max-width: 1400px;
+            margin: 0 auto;
+            padding: 0 2rem;
+        }
+
+        .page-hero h1 {
+            font-size: clamp(2.5rem, 4vw, 3.5rem);
+            margin-bottom: 1rem;
+            color: var(--text-dark);
+        }
+
+        .page-hero p {
+            font-size: 1.2rem;
+            color: var(--text-light);
+            max-width: 600px;
+            margin: 0 auto;
+        }
+
+        /* Menu Intro */
+        .menu-intro {
+            padding: 6rem 0;
+            background: var(--white);
+        }
+
+        .section-header {
+            text-align: center;
+            margin-bottom: 4rem;
+        }
+
+        .section-badge {
+            display: inline-block;
+            background: var(--bg-light);
+            color: var(--text-dark);
+            padding: 0.5rem 1rem;
+            border-radius: 20px;
+            font-size: 0.85rem;
+            font-weight: 600;
+            margin-bottom: 1rem;
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+        }
+
+        .section-title {
+            font-size: clamp(2rem, 3vw, 2.5rem);
+            margin-bottom: 1rem;
+            color: var(--text-dark);
+        }
+
+        .section-subtitle {
+            font-size: 1.1rem;
+            color: var(--text-light);
+            max-width: 600px;
+            margin: 0 auto;
+            line-height: 1.7;
+        }
+
+        .menu-highlights {
+            display: flex;
+            justify-content: center;
+            gap: 2rem;
+            margin-top: 2.5rem;
+            flex-wrap: wrap;
+        }
+
+        .highlight {
+            display: flex;
+            align-items: center;
+            gap: 0.75rem;
+            background: var(--bg-cream);
+            padding: 1rem 1.5rem;
+            border-radius: 25px;
+            font-weight: 600;
+            transition: all 0.3s ease;
+        }
+
+        .highlight:hover {
+            transform: translateY(-2px);
+            box-shadow: var(--shadow);
+        }
+
+        /* Menu Categories */
+        .menu-categories {
+            padding: 6rem 0;
+            background: var(--bg-cream);
+        }
+
+        .menu-tabs {
+            display: flex;
+            justify-content: center;
+            gap: 1rem;
+            margin-bottom: 4rem;
+            flex-wrap: wrap;
+        }
+
+        .menu-tab {
+            background: var(--white);
+            border: 2px solid transparent;
+            color: var(--text-light);
+            padding: 14px 28px;
+            border-radius: 25px;
+            cursor: pointer;
+            font-weight: 600;
+            font-size: 0.95rem;
+            transition: all 0.3s ease;
+            font-family: inherit;
+        }
+
+        .menu-tab:hover,
+        .menu-tab.active {
+            background: var(--accent-color);
+            color: var(--white);
+            transform: translateY(-2px);
+            box-shadow: var(--shadow);
+        }
+
+        .menu-category {
+            display: none;
+        }
+
+        .menu-category.active {
+            display: block;
+        }
+
+        .menu-category h2 {
+            text-align: center;
+            font-size: clamp(1.8rem, 3vw, 2.2rem);
+            margin-bottom: 3rem;
+            color: var(--text-dark);
+        }
+
+        /* Pizza Grid */
+        .pizza-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(350px, 1fr));
+            gap: 2rem;
+        }
+
+        .pizza-card {
+            background: var(--white);
+            border-radius: var(--border-radius);
+            overflow: hidden;
+            box-shadow: var(--shadow);
+            transition: all 0.3s ease;
+        }
+
+        .pizza-card:hover {
+            transform: translateY(-5px);
+            box-shadow: 0 15px 40px rgba(0,0,0,0.1);
+        }
+
+        .pizza-image {
+            height: 220px;
+            background: linear-gradient(135deg, var(--bg-light), var(--accent-color));
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 4rem;
+            position: relative;
+            overflow: hidden;
+        }
+
+        .pizza-image img {
+            width: 100%;
+            height: 100%;
+            object-fit: cover;
+        }
+
+        .pizza-info {
+            padding: 2rem;
+        }
+
+        .pizza-info h3 {
+            font-size: 1.4rem;
+            margin-bottom: 0.5rem;
+            color: var(--text-dark);
+        }
+
+        .pizza-description {
+            color: var(--text-light);
+            font-size: 0.95rem;
+            line-height: 1.6;
+            margin-bottom: 1.5rem;
+        }
+
+        .pizza-details {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            flex-wrap: wrap;
+            gap: 1rem;
+        }
+
+        .pizza-price {
+            font-size: 1.5rem;
+            font-weight: 700;
+            color: var(--accent-color);
+        }
+
+        .pizza-badge {
+            padding: 0.3rem 0.8rem;
+            border-radius: 15px;
+            font-size: 0.75rem;
+            font-weight: 600;
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+            color: var(--white);
+        }
+
+        .pizza-badge.classic { background: var(--accent-color); }
+        .pizza-badge.popular { background: #74b9ff; }
+        .pizza-badge.vegetarian { background: #00b894; }
+        .pizza-badge.vegan { background: #6c5ce7; }
+        .pizza-badge.premium { background: #a29bfe; }
+        .pizza-badge.spicy { background: #fd79a8; }
+
+        /* Packages Section */
+        .packages-section {
+            padding: 6rem 0;
+            background: var(--white);
+        }
+
+        .packages-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(320px, 1fr));
+            gap: 2rem;
+            max-width: 1100px;
+            margin: 0 auto;
+        }
+
+        .package-card {
+            background: var(--white);
+            border-radius: var(--border-radius);
+            padding: 2.5rem;
+            box-shadow: var(--shadow);
+            transition: all 0.3s ease;
+            position: relative;
+            border: 2px solid transparent;
+        }
+
+        .package-card:hover {
+            transform: translateY(-5px);
+            box-shadow: 0 15px 40px rgba(0,0,0,0.1);
+        }
+
+        .package-card.popular {
+            border-color: var(--accent-color);
+            transform: scale(1.05);
+        }
+
+        .package-ribbon {
+            position: absolute;
+            top: 1rem;
+            right: -0.5rem;
+            background: var(--accent-color);
+            color: var(--white);
+            padding: 0.5rem 1rem;
+            border-radius: 15px;
+            font-size: 0.8rem;
+            font-weight: 600;
+            text-transform: uppercase;
+        }
+
+        .package-card h3 {
+            font-size: 1.5rem;
+            margin-bottom: 1rem;
+            color: var(--text-dark);
+        }
+
+        .package-price {
+            font-size: 2.2rem;
+            font-weight: 700;
+            color: var(--accent-color);
+            margin-bottom: 2rem;
+        }
+
+        .package-features {
+            list-style: none;
+            margin-bottom: 2rem;
+        }
+
+        .package-features li {
+            padding: 0.5rem 0;
+            position: relative;
+            padding-left: 2rem;
+            color: var(--text-light);
+        }
+
+        .package-features li::before {
+            content: '✓';
+            position: absolute;
+            left: 0;
+            color: var(--accent-color);
+            font-weight: 700;
+            font-size: 1.2rem;
+        }
+
+        .package-note {
+            font-size: 0.9rem;
+            color: var(--text-light);
+            font-style: italic;
+            text-align: center;
+        }
+
+        /* CTA Section */
+        .cta-section {
+            padding: 6rem 0;
+            background: var(--accent-color);
+            color: var(--white);
+            text-align: center;
+        }
+
+        .cta-section h2 {
+            font-size: clamp(2rem, 3vw, 2.5rem);
+            margin-bottom: 1rem;
+        }
+
+        .cta-section p {
+            font-size: 1.1rem;
+            margin-bottom: 2rem;
+            opacity: 0.9;
+        }
+
+        .btn {
+            display: inline-flex;
+            align-items: center;
+            gap: 0.5rem;
+            padding: 1rem 2rem;
+            border-radius: 30px;
+            text-decoration: none;
+            font-weight: 600;
+            font-size: 1rem;
+            transition: all 0.3s ease;
+            border: none;
+            cursor: pointer;
+        }
+
+        .btn-primary {
+            background: var(--white);
+            color: var(--accent-color);
+            font-weight: 700;
+        }
+
+        .btn-primary:hover {
+            background: #f8f9fa;
+            transform: translateY(-2px);
+        }
+
+        /* Footer */
+        .footer {
+            background: var(--text-dark);
+            color: var(--white);
+            padding: 3rem 0 1rem;
+        }
+
+        .footer-content {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(250px, 1fr));
+            gap: 2rem;
+            margin-bottom: 2rem;
+        }
+
+        .footer-section h3 {
+            margin-bottom: 1rem;
+            color: var(--white);
+        }
+
+        .footer-section p,
+        .footer-section li {
+            color: #a0a0a0;
+            margin-bottom: 0.5rem;
+        }
+
+        .footer-section ul {
+            list-style: none;
+        }
+
+        .footer-section a {
+            color: #a0a0a0;
+            text-decoration: none;
+            transition: color 0.3s ease;
+        }
+
+        .footer-section a:hover {
+            color: var(--white);
+        }
+
+        .footer-bottom {
+            text-align: center;
+            padding-top: 2rem;
+            border-top: 1px solid #404040;
+            color: #a0a0a0;
+            font-size: 0.9rem;
+        }
+
+        /* Mobile */
+        .hamburger {
+            display: none;
+            flex-direction: column;
+            cursor: pointer;
+            padding: 5px;
+        }
+
+        .hamburger span {
+            width: 25px;
+            height: 2px;
+            background: var(--text-dark);
+            margin: 3px 0;
+            transition: 0.3s;
+            border-radius: 2px;
+        }
+
+        @media (max-width: 768px) {
+            .hamburger {
+                display: flex;
+            }
+
+            .nav-menu {
+                position: fixed;
+                left: -100%;
+                top: 90px;
+                flex-direction: column;
+                background: var(--white);
+                width: 100%;
+                text-align: center;
+                transition: 0.3s;
+                box-shadow: var(--shadow);
+                padding: 2rem 0;
+                gap: 1.5rem;
+            }
+
+            .nav-menu.active {
+                left: 0;
+            }
+
+            .menu-tabs {
+                gap: 0.5rem;
+            }
+
+            .menu-tab {
+                padding: 12px 20px;
+                font-size: 0.85rem;
+            }
+
+            .pizza-grid,
+            .packages-grid {
+                grid-template-columns: 1fr;
+            }
+
+            .package-card.popular {
+                transform: none;
+            }
+        }
+    </style>
+</head>
+<body>
+    <header class="header">
+        <div class="nav-container">
+            <a href="index.html" class="logo">Pizza dal Cortile</a>
+            <nav>
+                <ul class="nav-menu">
+                    <li><a href="index.html">Domů</a></li>
+                    <li><a href="sluzby.html">Služby</a></li>
+                    <li><a href="menu.html" class="active">Menu</a></li>
+                    <li><a href="o-nas.html">O nás</a></li>
+                    <li><a href="kontakt.html" class="nav-cta">Objednat</a></li>
+                </ul>
+                <div class="hamburger">
+                    <span></span>
+                    <span></span>
+                    <span></span>
+                </div>
+            </nav>
+        </div>
+    </header>
+
+    <main>
+        <section class="page-hero">
+            <div class="container">
+                <h1>Pizza Menu</h1>
+                <p>Autentické neapolské pizzy připravené podle tradičních receptur</p>
+            </div>
+        </section>
+
+        <section class="menu-intro">
+            <div class="container">
+                <div class="section-header">
+                    <div class="section-badge">Nejlepší ingredience</div>
+                    <h2 class="section-title">100% italské suroviny</h2>
+                    <p class="section-subtitle">Každou pizzu připravujeme z čerstvého těsta pomocí našich tajných receptur. Používáme pouze prémiové italské suroviny - San Marzano rajčata, mozzarellu di bufala a čerstvou bazalku.</p>
+                </div>
+
+                <div class="menu-highlights">
+                    <div class="highlight">
+                        <span>🔥</span>
+                        <span>Pečeno při 450°C</span>
+                    </div>
+                    <div class="highlight">
+                        <span>⏱️</span>
+                        <span>Připraveno za 90 sekund</span>
+                    </div>
+                    <div class="highlight">
+                        <span>🇮🇹</span>
+                        <span>100% italské suroviny</span>
+                    </div>
+                </div>
+            </div>
+        </section>
+
+        <section class="menu-categories">
+            <div class="container">
+                <div class="menu-tabs">
+                    <button class="menu-tab active" data-category="klasicke">Klasické</button>
+                    <button class="menu-tab" data-category="specialni">Speciality</button>
+                    <button class="menu-tab" data-category="vegetarian">Vegetariánské</button>
+                    <button class="menu-tab" data-category="sladke">Sladké</button>
+                </div>
+
+                <!-- Klasické pizzy -->
+                <div id="klasicke" class="menu-category active">
+                    <h2>Klasické pizzy</h2>
+                    <div class="pizza-grid">
+                        <div class="pizza-card">
+                            <div class="pizza-image">
+                                <img src="https://images.unsplash.com/photo-1574071318508-1cdbab80d002?w=400&h=220&fit=crop&crop=center" alt="Margherita" loading="lazy">
+                            </div>
+                            <div class="pizza-info">
+                                <h3>Margherita</h3>
+                                <p class="pizza-description">Rajčatová omáčka San Marzano, mozzarella di bufala, čerstvá bazalka, extra panenský olivový olej</p>
+                                <div class="pizza-details">
+                                    <span class="pizza-price">185 Kč</span>
+                                    <span class="pizza-badge classic">Klasika</span>
+                                </div>
+                            </div>
+                        </div>
+
+                        <div class="pizza-card">
+                            <div class="pizza-image">🍕</div>
+                            <div class="pizza-info">
+                                <h3>Marinara</h3>
+                                <p class="pizza-description">Rajčatová omáčka San Marzano, česnek, oregano, čerstvá bazalka, extra panenský olivový olej</p>
+                                <div class="pizza-details">
+                                    <span class="pizza-price">165 Kč</span>
+                                    <span class="pizza-badge vegan">Vegan</span>
+                                </div>
+                            </div>
+                        </div>
+
+                        <div class="pizza-card">
+                            <div class="pizza-image">🍕</div>
+                            <div class="pizza-info">
+                                <h3>Prosciutto e Funghi</h3>
+                                <p class="pizza-description">Rajčatová omáčka, mozzarella, italská šunka, čerstvé žampiony</p>
+                                <div class="pizza-details">
+                                    <span class="pizza-price">245 Kč</span>
+                                    <span class="pizza-badge popular">Oblíbená</span>
+                                </div>
+                            </div>
+                        </div>
+
+                        <div class="pizza-card">
+                            <div class="pizza-image">🍕</div>
+                            <div class="pizza-info">
+                                <h3>Quattro Stagioni</h3>
+                                <p class="pizza-description">Rajčatová omáčka, mozzarella, šunka, žampiony, artyčoky, olivy</p>
+                                <div class="pizza-details">
+                                    <span class="pizza-price">265 Kč</span>
+                                    <span class="pizza-badge classic">Klasika</span>
+                                </div>
+                            </div>
+                        </div>
+
+                        <div class="pizza-card">
+                            <div class="pizza-image">🌶️</div>
+                            <div class="pizza-info">
+                                <h3>Diavola</h3>
+                                <p class="pizza-description">Rajčatová omáčka, mozzarella, pikantní salám 'nduja, chilli papričky</p>
+                                <div class="pizza-details">
+                                    <span class="pizza-price">235 Kč</span>
+                                    <span class="pizza-badge spicy">Pikantní</span>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Speciální pizzy -->
+                <div id="specialni" class="menu-category">
+                    <h2>Naše speciality</h2>
+                    <div class="pizza-grid">
+                        <div class="pizza-card">
+                            <div class="pizza-image">🍄</div>
+                            <div class="pizza-info">
+                                <h3>Truffle Delight</h3>
+                                <p class="pizza-description">Krém z černých hříbků, mozzarella di bufala, parmigiano reggiano, rucola, lanýžový olej</p>
+                                <div class="pizza-details">
+                                    <span class="pizza-price">385 Kč</span>
+                                    <span class="pizza-badge premium">Premium</span>
+                                </div>
+                            </div>
+                        </div>
+
+                        <div class="pizza-card">
+                            <div class="pizza-image">❤️</div>
+                            <div class="pizza-info">
+                                <h3>Dal Cortile Special</h3>
+                                <p class="pizza-description">Rajčatová omáčka, burrata, prosciutto di Parma, fíky, med, piniové oříšky</p>
+                                <div class="pizza-details">
+                                    <span class="pizza-price">345 Kč</span>
+                                    <span class="pizza-badge premium">Naše</span>
+                                </div>
+                            </div>
+                        </div>
+
+                        <div class="pizza-card">
+                            <div class="pizza-image">🐟</div>
+                            <div class="pizza-info">
+                                <h3>Salmone Affumicato</h3>
+                                <p class="pizza-description">Krémová základna, uzený losos, kaparky, červená cibule, kopřík, citron</p>
+                                <div class="pizza-details">
+                                    <span class="pizza-price">325 Kč</span>
+                                    <span class="pizza-badge premium">Premium</span>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Vegetariánské pizzy -->
+                <div id="vegetarian" class="menu-category">
+                    <h2>Vegetariánské & Vegan</h2>
+                    <div class="pizza-grid">
+                        <div class="pizza-card">
+                            <div class="pizza-image">🥬</div>
+                            <div class="pizza-info">
+                                <h3>Ortolana</h3>
+                                <p class="pizza-description">Rajčatová omáčka, mozzarella, grilovaná cuketa, baklažán, paprika, červená cibule</p>
+                                <div class="pizza-details">
+                                    <span class="pizza-price">225 Kč</span>
+                                    <span class="pizza-badge vegetarian">Vegetariánská</span>
+                                </div>
+                            </div>
+                        </div>
+
+                        <div class="pizza-card">
+                            <div class="pizza-image">🧀</div>
+                            <div class="pizza-info">
+                                <h3>Spinaci e Ricotta</h3>
+                                <p class="pizza-description">Špenátový krém, ricotta, mozzarella, cherry rajčátka, piniové oříšky</p>
+                                <div class="pizza-details">
+                                    <span class="pizza-price">245 Kč</span>
+                                    <span class="pizza-badge vegetarian">Vegetariánská</span>
+                                </div>
+                            </div>
+                        </div>
+
+                        <div class="pizza-card">
+                            <div class="pizza-image">🌱</div>
+                            <div class="pizza-info">
+                                <h3>Vegan Margherita</h3>
+                                <p class="pizza-description">Rajčatová omáčka, veganský mozzarella sýr, čerstvá bazalka, olivový olej</p>
+                                <div class="pizza-details">
+                                    <span class="pizza-price">195 Kč</span>
+                                    <span class="pizza-badge vegan">Vegan</span>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Sladké pizzy -->
+                <div id="sladke" class="menu-category">
+                    <h2>Sladké pizzy</h2>
+                    <div class="pizza-grid">
+                        <div class="pizza-card">
+                            <div class="pizza-image">🍫</div>
+                            <div class="pizza-info">
+                                <h3>Nutella Delight</h3>
+                                <p class="pizza-description">Nutella, čerstvé jahody, banány, lískové oříšky, cukr moučka</p>
+                                <div class="pizza-details">
+                                    <span class="pizza-price">185 Kč</span>
+                                    <span class="pizza-badge classic">Sladká</span>
+                                </div>
+                            </div>
+                        </div>
+
+                        <div class="pizza-card">
+                            <div class="pizza-image">☕</div>
+                            <div class="pizza-info">
+                                <h3>Tiramisu Pizza</h3>
+                                <p class="pizza-description">Mascarpone, espresso, kakaový prášek, amaretti sušenky</p>
+                                <div class="pizza-details">
+                                    <span class="pizza-price">195 Kč</span>
+                                    <span class="pizza-badge premium">Sladká</span>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </section>
+
+        <section class="packages-section">
+            <div class="container">
+                <div class="section-header">
+                    <div class="section-badge">Catering balíčky</div>
+                    <h2 class="section-title">Vyberte si balíček pro vaši akci</h2>
+                </div>
+
+                <div class="packages-grid">
+                    <div class="package-card">
+                        <h3>Základní balíček</h3>
+                        <div class="package-price">79 Kč/osoba</div>
+                        <ul class="package-features">
+                            <li>3 druhy pizzy dle výběru</li>
+                            <li>Neomezené množství</li>
+                            <li>Obsluha a servírování</li>
+                            <li>Doprava do 50 km zdarma</li>
+                        </ul>
+                        <p class="package-note">Minimálně 20 osob</p>
+                    </div>
+
+                    <div class="package-card popular">
+                        <div class="package-ribbon">Nejoblíbenější</div>
+                        <h3>Premium balíček</h3>
+                        <div class="package-price">119 Kč/osoba</div>
+                        <ul class="package-features">
+                            <li>5 druhů pizzy dle výběru</li>
+                            <li>Italské předkrmy</li>
+                            <li>Neomezené množství</li>
+                            <li>Profesionální obsluha</li>
+                            <li>Doprava po celé ČR</li>
+                            <li>Úklid po akci</li>
+                        </ul>
+                        <p class="package-note">Minimálně 30 osob</p>
+                    </div>
+
+                    <div class="package-card">
+                        <h3>Deluxe balíček</h3>
+                        <div class="package-price">159 Kč/osoba</div>
+                        <ul class="package-features">
+                            <li>Neomezený výběr z celého menu</li>
+                            <li>Antipasti stůl</li>
+                            <li>Gelato bar</li>
+                            <li>Italské nápoje</li>
+                            <li>Show cooking s komentářem</li>
+                            <li>Kompletní event management</li>
+                        </ul>
+                        <p class="package-note">Minimálně 50 osob</p>
+                    </div>
+                </div>
+            </div>
+        </section>
+
+        <section class="cta-section">
+            <div class="container">
+                <h2>Máte chuť na autentickou italskou pizzu?</h2>
+                <p>Kontaktujte nás pro konzultaci a sestavení menu na míru vaší akci</p>
+                <a href="kontakt.html" class="btn btn-primary">Objednat catering</a>
+            </div>
+        </section>
+    </main>
+
+    <footer class="footer">
+        <div class="container">
+            <div class="footer-content">
+                <div class="footer-section">
+                    <h3>Pizza dal Cortile</h3>
+                    <p>První a největší poskytovatel mobilní pizza služby v České republice. Autentická neapolská pizza připravená přímo u vás.</p>
+                </div>
+                <div class="footer-section">
+                    <h3>Menu</h3>
+                    <ul>
+                        <li><a href="#klasicke">Klasické pizzy</a></li>
+                        <li><a href="#specialni">Speciality</a></li>
+                        <li><a href="#vegetarian">Vegetariánské</a></li>
+                        <li><a href="#sladke">Sladké pizzy</a></li>
+                    </ul>
+                </div>
+                <div class="footer-section">
+                    <h3>Kontakt</h3>
+                    <p>📞 +420 123 456 789</p>
+                    <p>✉️ info@pizzadalcortile.cz</p>
+                    <p>📍 Praha, Brno, Ostrava a okolí</p>
+                </div>
+            </div>
+            <div class="footer-bottom">
+                <p>&copy; 2025 Pizza dal Cortile. Všechna práva vyhrazena.</p>
+            </div>
+        </div>
+    </footer>
+
+    <script>
+        // Mobile menu toggle
+        document.querySelector('.hamburger').addEventListener('click', function() {
+            this.classList.toggle('active');
+            document.querySelector('.nav-menu').classList.toggle('active');
+        });
+
+        // Menu tabs functionality
+        const menuTabs = document.querySelectorAll('.menu-tab');
+        const menuCategories = document.querySelectorAll('.menu-category');
+
+        menuTabs.forEach(tab => {
+            tab.addEventListener('click', function() {
+                const targetCategory = this.getAttribute('data-category');
+                
+                // Remove active class from all tabs
+                menuTabs.forEach(t => t.classList.remove('active'));
+                
+                // Add active class to current tab
+                this.classList.add('active');
+                
+                // Hide all categories
+                menuCategories.forEach(category => {
+                    category.classList.remove('active');
+                });
+                
+                // Show target category
+                const targetElement = document.getElementById(targetCategory);
+                if (targetElement) {
+                    targetElement.classList.add('active');
+                }
+            });
+        });
+    </script>
+</body>
+</html>

@@ -1,0 +1,851 @@
+<!DOCTYPE html>
+<html lang="cs">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Pizza dal Cortile | Autentická mobilní pizza vyrobená přímo u vás</title>
+    <meta name="description" content="Nefalšovaná pizza jako z Neapole upečená přímo u vás. S naším pizza pop-upem za vámi přijedeme kamkoliv zpestřit vaši party, svatbu, nebo firemní večírek.">
+    <meta name="keywords" content="mobilní pizza, pizza catering, svatební catering, firemní pizza, neapolská pizza, pizza dal cortile">
+    
+    <!-- Fonts -->
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&family=Playfair+Display:wght@400;500;600;700&display=swap" rel="stylesheet">
+    
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        :root {
+            --primary-color: #2d3436;
+            --accent-color: #e17055;
+            --text-light: #636e72;
+            --text-dark: #2d3436;
+            --bg-light: #ffeaa7;
+            --bg-cream: #fff8e1;
+            --white: #ffffff;
+            --shadow: 0 8px 30px rgba(0,0,0,0.08);
+            --border-radius: 12px;
+        }
+
+        body {
+            font-family: 'Inter', -apple-system, BlinkMacSystemFont, sans-serif;
+            line-height: 1.6;
+            color: var(--text-dark);
+            background: var(--white);
+            font-weight: 400;
+        }
+
+        /* Typography */
+        h1, h2, h3, h4 {
+            font-family: 'Playfair Display', serif;
+            font-weight: 600;
+            line-height: 1.2;
+        }
+
+        /* Header - Clean & Minimal */
+        .header {
+            background: var(--white);
+            position: fixed;
+            top: 0;
+            width: 100%;
+            z-index: 1000;
+            padding: 1.5rem 0;
+            box-shadow: 0 2px 20px rgba(0,0,0,0.05);
+            transition: all 0.3s ease;
+        }
+
+        .nav-container {
+            max-width: 1400px;
+            margin: 0 auto;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            padding: 0 2rem;
+        }
+
+        .logo {
+            font-family: 'Playfair Display', serif;
+            font-size: 1.8rem;
+            font-weight: 700;
+            color: var(--text-dark);
+            text-decoration: none;
+            letter-spacing: -0.5px;
+        }
+
+        .nav-menu {
+            display: flex;
+            list-style: none;
+            gap: 2.5rem;
+            align-items: center;
+        }
+
+        .nav-menu a {
+            text-decoration: none;
+            color: var(--text-dark);
+            font-weight: 500;
+            font-size: 0.95rem;
+            transition: color 0.3s ease;
+            position: relative;
+        }
+
+        .nav-menu a:hover, .nav-menu a.active {
+            color: var(--accent-color);
+        }
+
+        .nav-cta {
+            background: var(--accent-color) !important;
+            color: var(--white) !important;
+            padding: 0.75rem 1.5rem;
+            border-radius: 25px;
+            font-weight: 600;
+            transition: all 0.3s ease;
+        }
+
+        .nav-cta:hover {
+            background: #d63447 !important;
+            transform: translateY(-1px);
+        }
+
+        /* Hero Section - Inspirováno Pizza Buona */
+        .hero {
+            min-height: 100vh;
+            background: linear-gradient(135deg, var(--bg-cream) 0%, var(--bg-light) 100%);
+            display: flex;
+            align-items: center;
+            position: relative;
+            overflow: hidden;
+            padding-top: 100px;
+        }
+
+        .hero::before {
+            content: '';
+            position: absolute;
+            top: 0;
+            right: -20%;
+            width: 60%;
+            height: 100%;
+            background: url('https://images.unsplash.com/photo-1513104890138-7c749659a591?w=800&h=1200&fit=crop&crop=center') no-repeat center;
+            background-size: cover;
+            opacity: 0.15;
+            transform: rotate(15deg);
+            border-radius: 50px;
+        }
+
+        .hero-container {
+            max-width: 1400px;
+            margin: 0 auto;
+            padding: 0 2rem;
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 4rem;
+            align-items: center;
+        }
+
+        .hero-content {
+            position: relative;
+            z-index: 2;
+        }
+
+        .hero-badge {
+            display: inline-block;
+            background: var(--accent-color);
+            color: var(--white);
+            padding: 0.5rem 1rem;
+            border-radius: 20px;
+            font-size: 0.85rem;
+            font-weight: 600;
+            margin-bottom: 1.5rem;
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+        }
+
+        .hero h1 {
+            font-size: clamp(2.5rem, 4vw, 4rem);
+            margin-bottom: 1.5rem;
+            color: var(--text-dark);
+            font-weight: 700;
+            line-height: 1.1;
+        }
+
+        .hero-subtitle {
+            font-size: 1.25rem;
+            color: var(--text-light);
+            margin-bottom: 2rem;
+            line-height: 1.5;
+            max-width: 500px;
+        }
+
+        .hero-features {
+            display: flex;
+            gap: 2rem;
+            margin-bottom: 2.5rem;
+            flex-wrap: wrap;
+        }
+
+        .hero-feature {
+            display: flex;
+            align-items: center;
+            gap: 0.5rem;
+            font-size: 0.95rem;
+            color: var(--text-light);
+        }
+
+        .hero-feature-icon {
+            width: 20px;
+            height: 20px;
+            background: var(--accent-color);
+            border-radius: 50%;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 0.8rem;
+            color: var(--white);
+        }
+
+        .hero-cta {
+            display: flex;
+            gap: 1rem;
+            flex-wrap: wrap;
+        }
+
+        .btn {
+            display: inline-flex;
+            align-items: center;
+            gap: 0.5rem;
+            padding: 1rem 2rem;
+            border-radius: 30px;
+            text-decoration: none;
+            font-weight: 600;
+            font-size: 1rem;
+            transition: all 0.3s ease;
+            border: none;
+            cursor: pointer;
+        }
+
+        .btn-primary {
+            background: var(--accent-color);
+            color: var(--white);
+            box-shadow: 0 4px 15px rgba(225, 112, 85, 0.3);
+        }
+
+        .btn-primary:hover {
+            background: #d63447;
+            transform: translateY(-2px);
+            box-shadow: 0 8px 25px rgba(225, 112, 85, 0.4);
+        }
+
+        .btn-secondary {
+            background: transparent;
+            color: var(--text-dark);
+            border: 2px solid var(--text-dark);
+        }
+
+        .btn-secondary:hover {
+            background: var(--text-dark);
+            color: var(--white);
+        }
+
+        .hero-image {
+            position: relative;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+        }
+
+        .hero-pizza {
+            width: 100%;
+            max-width: 500px;
+            height: 500px;
+            background: url('https://images.unsplash.com/photo-1513104890138-7c749659a591?w=500&h=500&fit=crop&crop=center') no-repeat center;
+            background-size: cover;
+            border-radius: 50%;
+            box-shadow: var(--shadow);
+            position: relative;
+        }
+
+        .hero-pizza::before {
+            content: '';
+            position: absolute;
+            inset: -20px;
+            background: linear-gradient(45deg, var(--bg-light), var(--accent-color));
+            border-radius: 50%;
+            z-index: -1;
+            opacity: 0.3;
+            animation: rotate 20s linear infinite;
+        }
+
+        @keyframes rotate {
+            from { transform: rotate(0deg); }
+            to { transform: rotate(360deg); }
+        }
+
+        /* Services Section - Clean Grid */
+        .services {
+            padding: 6rem 0;
+            background: var(--white);
+        }
+
+        .container {
+            max-width: 1400px;
+            margin: 0 auto;
+            padding: 0 2rem;
+        }
+
+        .section-header {
+            text-align: center;
+            margin-bottom: 4rem;
+        }
+
+        .section-badge {
+            display: inline-block;
+            background: var(--bg-light);
+            color: var(--text-dark);
+            padding: 0.5rem 1rem;
+            border-radius: 20px;
+            font-size: 0.85rem;
+            font-weight: 600;
+            margin-bottom: 1rem;
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+        }
+
+        .section-title {
+            font-size: clamp(2rem, 3vw, 2.5rem);
+            margin-bottom: 1rem;
+            color: var(--text-dark);
+        }
+
+        .section-subtitle {
+            font-size: 1.1rem;
+            color: var(--text-light);
+            max-width: 600px;
+            margin: 0 auto;
+        }
+
+        .services-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(350px, 1fr));
+            gap: 2rem;
+        }
+
+        .service-card {
+            background: var(--white);
+            border-radius: var(--border-radius);
+            padding: 2.5rem;
+            text-align: center;
+            box-shadow: var(--shadow);
+            transition: all 0.3s ease;
+            border: 1px solid #f1f3f4;
+        }
+
+        .service-card:hover {
+            transform: translateY(-5px);
+            box-shadow: 0 15px 40px rgba(0,0,0,0.1);
+        }
+
+        .service-icon {
+            width: 80px;
+            height: 80px;
+            background: var(--bg-light);
+            border-radius: 50%;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 2rem;
+            margin: 0 auto 1.5rem;
+        }
+
+        .service-card h3 {
+            font-size: 1.5rem;
+            margin-bottom: 1rem;
+            color: var(--text-dark);
+        }
+
+        .service-card p {
+            color: var(--text-light);
+            line-height: 1.6;
+            margin-bottom: 1.5rem;
+        }
+
+        .service-link {
+            color: var(--accent-color);
+            text-decoration: none;
+            font-weight: 600;
+            font-size: 0.95rem;
+            transition: color 0.3s ease;
+        }
+
+        .service-link:hover {
+            color: #d63447;
+        }
+
+        /* Why Choose Us */
+        .why-us {
+            padding: 6rem 0;
+            background: var(--bg-cream);
+        }
+
+        .features-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(250px, 1fr));
+            gap: 2rem;
+        }
+
+        .feature-card {
+            text-align: center;
+            padding: 2rem;
+        }
+
+        .feature-number {
+            width: 60px;
+            height: 60px;
+            background: var(--accent-color);
+            color: var(--white);
+            border-radius: 50%;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 1.5rem;
+            font-weight: 700;
+            margin: 0 auto 1.5rem;
+        }
+
+        .feature-card h3 {
+            font-size: 1.3rem;
+            margin-bottom: 1rem;
+            color: var(--text-dark);
+        }
+
+        .feature-card p {
+            color: var(--text-light);
+            line-height: 1.6;
+        }
+
+        /* Testimonials */
+        .testimonials {
+            padding: 6rem 0;
+            background: var(--white);
+        }
+
+        .testimonials-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
+            gap: 2rem;
+        }
+
+        .testimonial {
+            background: var(--bg-cream);
+            padding: 2.5rem;
+            border-radius: var(--border-radius);
+            position: relative;
+        }
+
+        .testimonial::before {
+            content: '"';
+            font-size: 4rem;
+            color: var(--accent-color);
+            position: absolute;
+            top: -10px;
+            left: 20px;
+            font-family: 'Playfair Display', serif;
+        }
+
+        .testimonial-text {
+            font-size: 1.1rem;
+            line-height: 1.6;
+            margin-bottom: 1.5rem;
+            color: var(--text-dark);
+            font-style: italic;
+        }
+
+        .testimonial-author {
+            font-weight: 600;
+            color: var(--accent-color);
+        }
+
+        /* CTA Section */
+        .cta-section {
+            padding: 6rem 0;
+            background: var(--accent-color);
+            color: var(--white);
+            text-align: center;
+        }
+
+        .cta-section h2 {
+            font-size: clamp(2rem, 3vw, 2.5rem);
+            margin-bottom: 1rem;
+        }
+
+        .cta-section p {
+            font-size: 1.1rem;
+            margin-bottom: 2rem;
+            opacity: 0.9;
+        }
+
+        .cta-section .btn {
+            background: var(--white);
+            color: var(--accent-color);
+            font-weight: 700;
+        }
+
+        .cta-section .btn:hover {
+            background: #f8f9fa;
+            transform: translateY(-2px);
+        }
+
+        /* Footer */
+        .footer {
+            background: var(--text-dark);
+            color: var(--white);
+            padding: 3rem 0 1rem;
+        }
+
+        .footer-content {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(250px, 1fr));
+            gap: 2rem;
+            margin-bottom: 2rem;
+        }
+
+        .footer-section h3 {
+            margin-bottom: 1rem;
+            color: var(--white);
+        }
+
+        .footer-section p,
+        .footer-section li {
+            color: #a0a0a0;
+            margin-bottom: 0.5rem;
+        }
+
+        .footer-section ul {
+            list-style: none;
+        }
+
+        .footer-section a {
+            color: #a0a0a0;
+            text-decoration: none;
+            transition: color 0.3s ease;
+        }
+
+        .footer-section a:hover {
+            color: var(--white);
+        }
+
+        .footer-bottom {
+            text-align: center;
+            padding-top: 2rem;
+            border-top: 1px solid #404040;
+            color: #a0a0a0;
+            font-size: 0.9rem;
+        }
+
+        /* Mobile Styles */
+        .hamburger {
+            display: none;
+            flex-direction: column;
+            cursor: pointer;
+            padding: 5px;
+        }
+
+        .hamburger span {
+            width: 25px;
+            height: 2px;
+            background: var(--text-dark);
+            margin: 3px 0;
+            transition: 0.3s;
+            border-radius: 2px;
+        }
+
+        @media (max-width: 768px) {
+            .hamburger {
+                display: flex;
+            }
+
+            .nav-menu {
+                position: fixed;
+                left: -100%;
+                top: 90px;
+                flex-direction: column;
+                background: var(--white);
+                width: 100%;
+                text-align: center;
+                transition: 0.3s;
+                box-shadow: var(--shadow);
+                padding: 2rem 0;
+                gap: 1.5rem;
+            }
+
+            .nav-menu.active {
+                left: 0;
+            }
+
+            .hero-container {
+                grid-template-columns: 1fr;
+                gap: 2rem;
+                text-align: center;
+            }
+
+            .hero-pizza {
+                max-width: 300px;
+                height: 300px;
+            }
+
+            .hero-cta {
+                justify-content: center;
+            }
+
+            .btn {
+                width: 100%;
+                max-width: 250px;
+                justify-content: center;
+            }
+
+            .services-grid,
+            .features-grid,
+            .testimonials-grid {
+                grid-template-columns: 1fr;
+            }
+        }
+
+        /* Smooth animations */
+        @media (prefers-reduced-motion: no-preference) {
+            .fade-in {
+                opacity: 0;
+                transform: translateY(30px);
+                transition: all 0.6s ease;
+            }
+
+            .fade-in.visible {
+                opacity: 1;
+                transform: translateY(0);
+            }
+        }
+    </style>
+</head>
+<body>
+    <header class="header">
+        <div class="nav-container">
+            <a href="index.html" class="logo">Pizza dal Cortile</a>
+            <nav>
+                <ul class="nav-menu">
+                    <li><a href="index.html" class="active">Domů</a></li>
+                    <li><a href="sluzby.html">Služby</a></li>
+                    <li><a href="menu.html">Menu</a></li>
+                    <li><a href="o-nas.html">O nás</a></li>
+                    <li><a href="kontakt.html" class="nav-cta">Objednat</a></li>
+                </ul>
+                <div class="hamburger">
+                    <span></span>
+                    <span></span>
+                    <span></span>
+                </div>
+            </nav>
+        </div>
+    </header>
+
+    <main>
+        <section id="home" class="hero">
+            <div class="hero-container">
+                <div class="hero-content fade-in">
+                    <div class="hero-badge">První mobilní pizza v ČR</div>
+                    <h1>Autentická pizza vyrobená kdekoliv přímo u vás</h1>
+                    <p class="hero-subtitle">Nefalšovaná pizza jako z Neapole upečená přímo u vás? S naším pizza pop-upem za vámi přijedeme kamkoliv zpestřit vaši party, svatbu, nebo firemní večírek.</p>
+                    
+                    <div class="hero-features">
+                        <div class="hero-feature">
+                            <div class="hero-feature-icon">✓</div>
+                            <span>Mobilní pec k vám</span>
+                        </div>
+                        <div class="hero-feature">
+                            <div class="hero-feature-icon">✓</div>
+                            <span>100% italské suroviny</span>
+                        </div>
+                        <div class="hero-feature">
+                            <div class="hero-feature-icon">✓</div>
+                            <span>Čerstvá pizza za 90 sekund</span>
+                        </div>
+                    </div>
+
+                    <div class="hero-cta">
+                        <a href="kontakt.html" class="btn btn-primary">Objednat catering</a>
+                        <a href="menu.html" class="btn btn-secondary">Prohlédnout menu</a>
+                    </div>
+                </div>
+                <div class="hero-image fade-in">
+                    <div class="hero-pizza"></div>
+                </div>
+            </div>
+        </section>
+
+        <section id="services" class="services">
+            <div class="container">
+                <div class="section-header fade-in">
+                    <div class="section-badge">Naše služby</div>
+                    <h2 class="section-title">Pizza catering na míru</h2>
+                    <p class="section-subtitle">Přijedeme za vámi s kompletním vybavením a připravíme čerstvou pizzu přímo před vašimi hosty</p>
+                </div>
+
+                <div class="services-grid">
+                    <div class="service-card fade-in">
+                        <div class="service-icon">💒</div>
+                        <h3>Svatební catering</h3>
+                        <p>Udělejte ze svého velkého dne nezapomenutelný zážitek s autentickou italskou pizzou přímo na místě.</p>
+                        <a href="sluzby.html" class="service-link">Zjistit více →</a>
+                    </div>
+                    <div class="service-card fade-in">
+                        <div class="service-icon">🏢</div>
+                        <h3>Firemní akce</h3>
+                        <p>Potěšte své zaměstnance a klienty kvalitní pizzou přímo v kanceláří nebo na firemní akci.</p>
+                        <a href="sluzby.html" class="service-link">Zjistit více →</a>
+                    </div>
+                    <div class="service-card fade-in">
+                        <div class="service-icon">🎉</div>
+                        <h3>Soukromé oslavy</h3>
+                        <p>Narozeniny, promoce, rodinné oslavy - udělejte z každé příležitosti speciální moment.</p>
+                        <a href="sluzby.html" class="service-link">Zjistit více →</a>
+                    </div>
+                </div>
+            </div>
+        </section>
+
+        <section class="why-us">
+            <div class="container">
+                <div class="section-header fade-in">
+                    <div class="section-badge">Proč si vybrat nás</div>
+                    <h2 class="section-title">Průkopníci mobilní pizzy</h2>
+                    <p class="section-subtitle">Jsme první, kdo přinesl mobilní pizza catering do České republiky</p>
+                </div>
+
+                <div class="features-grid">
+                    <div class="feature-card fade-in">
+                        <div class="feature-number">01</div>
+                        <h3>Market Leader</h3>
+                        <p>Jsme první na trhu od roku 2020 s největším podílem na trhu a nejbohatšími zkušenostmi.</p>
+                    </div>
+                    <div class="feature-card fade-in">
+                        <div class="feature-number">02</div>
+                        <h3>Autentická kvalita</h3>
+                        <p>Naše pizzy připravujeme podle tradičních neapolských receptur s importovanými italskými surovinami.</p>
+                    </div>
+                    <div class="feature-card fade-in">
+                        <div class="feature-number">03</div>
+                        <h3>Čerstvá pizza</h3>
+                        <p>Pizza pečená v mobilní peci při teplotě 450°C je vždy čerstvá a křupavá, přímo před vašimi hosty.</p>
+                    </div>
+                    <div class="feature-card fade-in">
+                        <div class="feature-number">04</div>
+                        <h3>Kompletní zážitek</h3>
+                        <p>Nabízíme nejen vynikající pizzu, ale celý show cooking zážitek pro vaše hosty.</p>
+                    </div>
+                </div>
+            </div>
+        </section>
+
+        <section class="testimonials">
+            <div class="container">
+                <div class="section-header fade-in">
+                    <div class="section-badge">Reference</div>
+                    <h2 class="section-title">Co říkají naši klienti</h2>
+                </div>
+
+                <div class="testimonials-grid">
+                    <div class="testimonial fade-in">
+                        <p class="testimonial-text">Byli jsme první, kdo si objednal jejich službu v roce 2020. Od té doby jsme viděli, jak narostli a stali se jednoznačně nejlepšími na trhu. Pizza byla vynikající!</p>
+                        <div class="testimonial-author">Jana K., Praha</div>
+                    </div>
+                    <div class="testimonial fade-in">
+                        <p class="testimonial-text">Perfektní catering na naši firemní akci. Hosté byli nadšení a my také. Určitě budeme objednávat znovu.</p>
+                        <div class="testimonial-author">Tomáš V., Brno</div>
+                    </div>
+                    <div class="testimonial fade-in">
+                        <p class="testimonial-text">Svatba s pizzou? Zpočátku jsme váhali, ale bylo to nejlepší rozhodnutí! Hosté si pochvalovali až do konce večera.</p>
+                        <div class="testimonial-author">Markéta a Pavel, Ostrava</div>
+                    </div>
+                </div>
+            </div>
+        </section>
+
+        <section class="cta-section" id="contact">
+            <div class="container">
+                <h2>Připraveni objednat?</h2>
+                <p>Kontaktujte nás pro nezávaznou konzultaci a cenovou nabídku</p>
+                <a href="kontakt.html" class="btn">Získat cenovou nabídku</a>
+            </div>
+        </section>
+    </main>
+
+    <footer class="footer">
+        <div class="container">
+            <div class="footer-content">
+                <div class="footer-section">
+                    <h3>Pizza dal Cortile</h3>
+                    <p>První a největší poskytovatel mobilní pizza služby v České republice. Autentická neapolská pizza připravená přímo u vás.</p>
+                </div>
+                <div class="footer-section">
+                    <h3>Služby</h3>
+                    <ul>
+                        <li><a href="sluzby.html">Svatební catering</a></li>
+                        <li><a href="sluzby.html">Firemní akce</a></li>
+                        <li><a href="sluzby.html">Soukromé oslavy</a></li>
+                        <li><a href="menu.html">Pizza menu</a></li>
+                    </ul>
+                </div>
+                <div class="footer-section">
+                    <h3>Kontakt</h3>
+                    <p>📞 +420 123 456 789</p>
+                    <p>✉️ info@pizzadalcortile.cz</p>
+                    <p>📍 Praha, Brno, Ostrava a okolí</p>
+                </div>
+            </div>
+            <div class="footer-bottom">
+                <p>&copy; 2025 Pizza dal Cortile. Všechna práva vyhrazena.</p>
+            </div>
+        </div>
+    </footer>
+
+    <script>
+        // Mobile menu toggle
+        document.querySelector('.hamburger').addEventListener('click', function() {
+            this.classList.toggle('active');
+            document.querySelector('.nav-menu').classList.toggle('active');
+        });
+
+        // Smooth scrolling
+        document.querySelectorAll('a[href^="#"]').forEach(anchor => {
+            anchor.addEventListener('click', function (e) {
+                e.preventDefault();
+                const target = document.querySelector(this.getAttribute('href'));
+                if (target) {
+                    target.scrollIntoView({
+                        behavior: 'smooth',
+                        block: 'start'
+                    });
+                }
+            });
+        });
+
+        // Fade in animation on scroll
+        const observerOptions = {
+            threshold: 0.1,
+            rootMargin: '0px 0px -50px 0px'
+        };
+
+        const observer = new IntersectionObserver(function(entries) {
+            entries.forEach(entry => {
+                if (entry.isIntersecting) {
+                    entry.target.classList.add('visible');
+                }
+            });
+        }, observerOptions);
+
+        document.querySelectorAll('.fade-in').forEach(el => {
+            observer.observe(el);
+        });
+    </script>
+</body>
+</html>
