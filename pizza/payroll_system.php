@@ -1,6 +1,17 @@
 <?php
 session_start();
 
+// Check if user is logged in
+if (!isset($_SESSION['order_user'])) {
+    header('Location: /index.php');
+    exit;
+}
+
+// Get user information from session
+$user_name = $_SESSION['order_user'];
+$full_name = $_SESSION['order_full_name'];
+$user_role = $_SESSION['user_role'];
+
 // Připojení k databázi
 try {
     $pdo = new PDO('mysql:host=127.0.0.1;dbname=pizza_orders;charset=utf8mb4', 'pizza_user', 'pizza');
@@ -9,15 +20,9 @@ try {
     die("Chyba připojení: " . $e->getMessage());
 }
 
-// Kontrola přihlášení - payroll je pouze pro přihlášené uživatele
-if (!isset($_SESSION['order_user'])) {
-    header("Location: login.php");
-    exit;
-}
-
 if (isset($_GET['logout'])) {
     session_destroy();
-    header("Location: login.php");
+    header("Location: /index.php");
     exit;
 }
 
