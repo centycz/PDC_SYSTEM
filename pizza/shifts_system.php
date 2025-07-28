@@ -1,6 +1,17 @@
 <?php
 session_start();
 
+// Check if user is logged in
+if (!isset($_SESSION['order_user'])) {
+    header('Location: /index.php');
+    exit;
+}
+
+// Get user information from session
+$user_name = $_SESSION['order_user'];
+$full_name = $_SESSION['order_full_name'];
+$user_role = $_SESSION['user_role'];
+
 // Připojení k databázi (stejné jako v orders_system.php)
 try {
     $pdo = new PDO('mysql:host=127.0.0.1;dbname=pizza_orders;charset=utf8mb4', 'pizza_user', 'pizza');
@@ -9,28 +20,19 @@ try {
     die("Chyba připojení: " . $e->getMessage());
 }
 
-// Kontrola přihlášení
-$is_guest = isset($_GET['guest']) || (!isset($_SESSION['order_user']) && !isset($_GET['guest']));
-$is_logged_in = isset($_SESSION['order_user']);
-
-if (!$is_logged_in && !isset($_GET['guest'])) {
-    header("Location: login.php");
-    exit;
-}
-
 if (isset($_GET['logout'])) {
     session_destroy();
-    header("Location: login.php");
+    header("Location: /index.php");
     exit;
 }
 
-$current_user = $_SESSION['order_user'] ?? 'host';
-$current_user_id = $_SESSION['order_user_id'] ?? null;
-$current_full_name = $_SESSION['order_full_name'] ?? 'Host';
+$current_user = $_SESSION['order_user'];
+$current_user_id = $_SESSION['order_user_id'];
+$current_full_name = $_SESSION['order_full_name'];
 $is_admin = $_SESSION['is_admin'] ?? false;
 
 // Zpracování akcí
-if ($_POST['action'] ?? false && $is_logged_in) {
+if ($_POST['action'] ?? false) {
     try {
         if ($_POST['action'] === 'request_shift') {
             // Kontrola, zda už není přihlášen na tuto směnu
@@ -158,21 +160,19 @@ $shifts_query = "
 ";
 $shifts = $pdo->query($shifts_query)->fetchAll(PDO::FETCH_ASSOC);
 
-// Načtení přihlášek uživatele (pokud je přihlášen)
+// Načtení přihlášek uživatele
 $user_requests = [];
-if ($is_logged_in) {
-    $user_requests_query = "
-        SELECT sr.*, s.shift_date, st.name as type_name, st.icon as type_icon
-        FROM shift_requests sr
-        JOIN shifts s ON sr.shift_id = s.id
-        JOIN shift_types st ON s.shift_type_id = st.id
-        WHERE sr.user_id = ? AND s.shift_date >= CURDATE()
-        ORDER BY s.shift_date, st.start_time
-    ";
-    $stmt = $pdo->prepare($user_requests_query);
-    $stmt->execute([$current_user_id]);
-    $user_requests = $stmt->fetchAll(PDO::FETCH_ASSOC);
-}
+$user_requests_query = "
+    SELECT sr.*, s.shift_date, st.name as type_name, st.icon as type_icon
+    FROM shift_requests sr
+    JOIN shifts s ON sr.shift_id = s.id
+    JOIN shift_types st ON s.shift_type_id = st.id
+    WHERE sr.user_id = ? AND s.shift_date >= CURDATE()
+    ORDER BY s.shift_date, st.start_time
+";
+$stmt = $pdo->prepare($user_requests_query);
+$stmt->execute([$current_user_id]);
+$user_requests = $stmt->fetchAll(PDO::FETCH_ASSOC);
 
 // Načtení všech přihlášek pro admin
 $all_requests = [];
@@ -541,16 +541,6 @@ $stats = $pdo->query("
             border: 1px solid #f5c6cb;
         }
 
-        .guest-banner {
-            background: #fff3cd;
-            border: 2px solid #ffeaa7;
-            border-radius: 10px;
-            padding: 15px;
-            margin-bottom: 20px;
-            text-align: center;
-            color: #856404;
-        }
-
         .login-prompt {
             background: #f8f9fa;
             border: 2px dashed #dee2e6;
@@ -591,18 +581,12 @@ $stats = $pdo->query("
         <div class="header">
             <h1>⏰ Plánování směn</h1>
             <div class="user-info">
-                <?php if ($is_logged_in): ?>
                     <span>👤 <?= htmlspecialchars($current_full_name) ?> (<?= htmlspecialchars($current_user) ?>)</span>
                     <span>📅 <?= date('d.m.Y H:i') ?></span>
                     <?php if ($is_admin): ?>
                         <span style="background: #dc3545; color: white; padding: 4px 8px; border-radius: 12px; font-size: 0.8rem;">ADMIN</span>
                     <?php endif; ?>
                     <a href="?logout=1" class="btn btn-warning">🚪 Odhlásit</a>
-                <?php else: ?>
-                    <span>👤 Host (pouze náhled)</span>
-                    <span>📅 <?= date('d.m.Y H:i') ?></span>
-                    <a href="login.php" class="btn btn-primary">🔓 Přihlásit se</a>
-                <?php endif; ?>
             </div>
         </div>
 
@@ -616,13 +600,6 @@ $stats = $pdo->query("
                 <a href="../" class="nav-link">← Hlavní stránka</a>
             </div>
         </div>
-
-        <?php if (!$is_logged_in): ?>
-            <div class="guest-banner">
-                <h3>👁️ Náhled pro hosty</h3>
-                <p>Prohlížíte si směny v režimu pouze pro čtení. Pro přihlášení na směny se musíte <strong><a href="login.php">přihlásit</a></strong>.</p>
-            </div>
-        <?php endif; ?>
 
         <?php if (isset($success_message)): ?>
             <div class="message success"><?= $success_message ?></div>
@@ -718,7 +695,7 @@ $stats = $pdo->query("
                                 <?php endif; ?>
                             </div>
 
-                            <?php if ($is_logged_in && $shift['approved_count'] < $shift['max_employees']): ?>
+                            <?php if ($shift['approved_count'] < $shift['max_employees']): ?>
                                 <?php
                                 // Kontrola, zda už je uživatel přihlášen
                                 $user_request_stmt = $pdo->prepare("SELECT status FROM shift_requests WHERE shift_id = ? AND user_id = ?");
@@ -767,12 +744,11 @@ $stats = $pdo->query("
 
             <!-- PRAVÝ PANEL: MOJE PŘIHLÁŠKY / ADMIN PANEL -->
             <div class="panel">
-                <?php if ($is_logged_in): ?>
-                    <div class="panel-title">
-                        <?= $is_admin ? '👨‍💼 Správa přihlášek' : '📋 Moje přihlášky' ?>
-                    </div>
+                <div class="panel-title">
+                    <?= $is_admin ? '👨‍💼 Správa přihlášek' : '📋 Moje přihlášky' ?>
+                </div>
 
-                    <div class="requests-container">
+                <div class="requests-container">
                         <?php if ($is_admin): ?>
                             <!-- ADMIN: Všechny přihlášky -->
                             <?php foreach ($all_requests as $req): ?>
@@ -879,16 +855,6 @@ $stats = $pdo->query("
                             </div>
                         <?php endif; ?>
                     </div>
-                <?php else: ?>
-                    <div class="panel-title">
-                        🔒 Přihlášení vyžadováno
-                    </div>
-                    <div class="login-prompt">
-                        <h3>🔒 Přihlášení vyžadováno</h3>
-                        <p>Pro správu směn se musíte přihlásit.</p>
-                        <a href="login.php" class="btn btn-primary">🔓 Přihlásit se</a>
-                    </div>
-                <?php endif; ?>
             </div>
         </div>
     </div>

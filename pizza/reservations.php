@@ -1,3 +1,17 @@
+<?php
+session_start();
+
+// Check if user is logged in
+if (!isset($_SESSION['order_user'])) {
+    header('Location: /index.php');
+    exit;
+}
+
+// Get user information from session
+$user_name = $_SESSION['order_user'];
+$full_name = $_SESSION['order_full_name'];
+$user_role = $_SESSION['user_role'];
+?>
 <!DOCTYPE html>
 <html lang="cs">
 <head>

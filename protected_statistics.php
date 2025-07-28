@@ -1,5 +1,16 @@
 <?php
-require_once 'auth_check.php';
+session_start();
+
+// Check if user is logged in
+if (!isset($_SESSION['order_user'])) {
+    header('Location: /index.php');
+    exit;
+}
+
+// Get user information from session
+$user_name = $_SESSION['order_user'];
+$full_name = $_SESSION['order_full_name'];
+$user_role = $_SESSION['user_role'];
 
 // Cesta ke statistikám
 $statistics_url = 'pizza/data.html';
@@ -78,17 +89,17 @@ $statistics_url = 'pizza/data.html';
 <body>
     <div class="header">
         <h1>📊 Administrátorské statistiky</h1>
-        <a href="auth_check.php?logout=1" class="logout-btn">Odhlásit se</a>
+        <a href="/index.php?logout=1" class="logout-btn">Odhlásit se</a>
     </div>
     
     <div class="stats-container">
         <h2>Vítejte v admin sekci!</h2>
-        <p>Přístup povolen pro uživatele: <strong><?= htmlspecialchars($_SESSION['order_full_name'] ?? 'Admin') ?></strong></p>
-        <p>Role: <strong><?= ucfirst($_SESSION['user_role'] ?? 'admin') ?></strong></p>
+        <p>Přístup povolen pro uživatele: <strong><?= htmlspecialchars($full_name) ?></strong></p>
+        <p>Role: <strong><?= ucfirst($user_role) ?></strong></p>
         <p>Datum a čas: <strong><?= date('Y-m-d H:i:s') ?></strong></p>
         
         <div class="admin-links">
-            <?php if (isset($_SESSION['user_role']) && $_SESSION['user_role'] === 'admin'): ?>
+            <?php if ($user_role === 'admin'): ?>
             <a href="admin/users_management.php" class="admin-link">
                 👥 Správa uživatelů
             </a>

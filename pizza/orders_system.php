@@ -1,6 +1,17 @@
 <?php
 session_start();
 
+// Check if user is logged in
+if (!isset($_SESSION['order_user'])) {
+    header('Location: /index.php');
+    exit;
+}
+
+// Get user information from session
+$user_name = $_SESSION['order_user'];
+$full_name = $_SESSION['order_full_name'];
+$user_role = $_SESSION['user_role'];
+
 // Připojení k databázi
 try {
     $pdo = new PDO('mysql:host=127.0.0.1;dbname=pizza_orders;charset=utf8mb4', 'pizza_user', 'pizza');
@@ -9,29 +20,19 @@ try {
     die("Chyba připojení: " . $e->getMessage());
 }
 
-// Kontrola přihlášení nebo guest režim
-$is_guest = isset($_GET['guest']) || (!isset($_SESSION['order_user']) && !isset($_GET['guest']));
-$is_logged_in = isset($_SESSION['order_user']);
-
-// Pokud není přihlášen a není guest, přesměruj na login
-if (!$is_logged_in && !isset($_GET['guest'])) {
-    header("Location: login.php");
-    exit;
-}
-
 // Odhlášení
 if (isset($_GET['logout'])) {
     session_destroy();
-    header("Location: login.php");
+    header("Location: /index.php");
     exit;
 }
 
-$current_user = $_SESSION['order_user'] ?? 'host';
-$current_user_id = $_SESSION['order_user_id'] ?? null;
-$current_full_name = $_SESSION['order_full_name'] ?? 'Host';
+$current_user = $_SESSION['order_user'];
+$current_user_id = $_SESSION['order_user_id'];
+$current_full_name = $_SESSION['order_full_name'];
 $is_admin = $_SESSION['is_admin'] ?? false;
 
-if ($_POST['action'] ?? false && $is_logged_in) {
+if ($_POST['action'] ?? false) {
     try {
         if ($_POST['action'] === 'add_request') {
             $stmt = $pdo->prepare("
@@ -481,20 +482,6 @@ $stats = $pdo->query("
             }
         }
         
-        .guest-banner {
-            background: #fff3cd;
-            border: 2px solid #ffeaa7;
-            border-radius: 10px;
-            padding: 15px;
-            margin-bottom: 20px;
-            text-align: center;
-            color: #856404;
-        }
-        
-        .guest-banner h3 {
-            margin-bottom: 10px;
-        }
-        
         .disabled-form {
             opacity: 0.6;
             pointer-events: none;
@@ -597,18 +584,12 @@ $stats = $pdo->query("
         <div class="header">
             <h1>🛒 Firemní objednávky</h1>
             <div class="user-info">
-                <?php if ($is_logged_in): ?>
                     <span>👤 <?= htmlspecialchars($current_full_name) ?> (<?= htmlspecialchars($current_user) ?>)</span>
                     <span>📅 <?= date('d.m.Y H:i') ?></span>
                     <?php if ($is_admin): ?>
                         <span style="background: #dc3545; color: white; padding: 4px 8px; border-radius: 12px; font-size: 0.8rem;">ADMIN</span>
                     <?php endif; ?>
                     <a href="?logout=1" class="btn btn-warning">🚪 Odhlásit</a>
-                <?php else: ?>
-                    <span>👤 Host (pouze náhled)</span>
-                    <span>📅 <?= date('d.m.Y H:i') ?></span>
-                    <a href="login.php" class="btn btn-primary">🔓 Přihlásit se</a>
-                <?php endif; ?>
                 <a href="../" class="btn btn-secondary">← Zpět</a>
             </div>
                </div>
@@ -629,13 +610,6 @@ $stats = $pdo->query("
 </div>
 
 
-
-        <?php if (!$is_logged_in): ?>
-            <div class="guest-banner">
-                <h3>👁️ Náhled pro hosty</h3>
-                <p>Prohlížíte si objednávky v režimu pouze pro čtení. Pro přidání nebo úpravu požadavků se musíte <strong><a href="login.php">přihlásit</a></strong>.</p>
-            </div>
-        <?php endif; ?>
 
         <?php if (isset($success_message)): ?>
             <div class="message success"><?= $success_message ?></div>
@@ -668,8 +642,7 @@ $stats = $pdo->query("
                     ➕ Nový požadavek
                 </div>
 
-                <?php if ($is_logged_in): ?>
-                    <form method="POST">
+                <form method="POST">
                         <input type="hidden" name="action" value="add_request">
                         
                         <div class="form-group">
@@ -712,13 +685,6 @@ $stats = $pdo->query("
                             ➕ Přidat požadavek
                         </button>
                     </form>
-                <?php else: ?>
-                    <div class="login-prompt">
-                        <h3>🔒 Přihlášení vyžadováno</h3>
-                        <p>Pro přidání nového požadavku se musíte přihlásit.</p>
-                        <a href="login.php" class="btn btn-primary">🔓 Přihlásit se</a>
-                    </div>
-                <?php endif; ?>
 
                 <!-- ADMIN KONTROLY -->
                 <?php if ($is_admin): ?>
@@ -770,7 +736,7 @@ $stats = $pdo->query("
                                 <?php endif; ?>
                             </div>
                             
-                            <?php if ($req['status'] === 'pending' && $is_logged_in): ?>
+                            <?php if ($req['status'] === 'pending'): ?>
                                 <div class="request-actions">
                                     <?php if ($is_admin): ?>
                                         <form method="POST" style="display: inline;">

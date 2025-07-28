@@ -501,7 +501,7 @@ function canAccessTab($tab, $user_role) {
 
             <!-- Rezervace -->
             <?php if (canAccessTab('reservations', $user_role)): ?>
-            <a href="/pizza/reservations.html" class="service-card pizza">
+            <a href="/pizza/reservations.php" class="service-card pizza">
                 <span class="service-icon">📅</span>
                 <h3>Rezervace</h3>
                 <p>Rezervační systém.</p>
