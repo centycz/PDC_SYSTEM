@@ -12,8 +12,9 @@ $user_name = $_SESSION['order_user'];
 $full_name = $_SESSION['order_full_name'];
 $user_role = $_SESSION['user_role'];
 
-// Cesta ke statistikám
-$statistics_url = 'pizza/data.html';
+// Redirect to new data.php location
+header('Location: /pizza/data.php');
+exit;
 ?>
 <!DOCTYPE html>
 <html lang="cs">
