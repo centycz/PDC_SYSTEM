@@ -21,13 +21,13 @@ function getFinanceDb() {
     if ($pdo) return $pdo;
     
     try {
-        // Opravené pøipojení k MySQL databázi pizza_orders
+        // Opravenï¿½ pï¿½ipojenï¿½ k MySQL databï¿½zi pizza_orders
         $pdo = new PDO('mysql:host=127.0.0.1;dbname=pizza_orders;charset=utf8mb4', 'pizza_user', 'pizza');
         $pdo->setAttribute(PDO::ATTR_ERRMODE, PDO::ERRMODE_EXCEPTION);
         $pdo->exec("SET NAMES utf8mb4");
         $pdo->exec("SET CHARACTER SET utf8mb4");
         
-        // Vytvoøení tabulky transactions pro finanèní sledování (MySQL syntaxe)
+        // Vytvoï¿½enï¿½ tabulky transactions pro finanï¿½nï¿½ sledovï¿½nï¿½ (MySQL syntaxe)
         $pdo->exec("
             CREATE TABLE IF NOT EXISTS transactions (
                 id INT AUTO_INCREMENT PRIMARY KEY,
@@ -36,9 +36,17 @@ function getFinanceDb() {
                 description TEXT NOT NULL,
                 category VARCHAR(255) NOT NULL,
                 date DATE NOT NULL,
+                user_created VARCHAR(255) DEFAULT NULL,
                 created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
             ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci
         ");
+        
+        // Add user_created column if it doesn't exist (for existing tables)
+        try {
+            $pdo->exec("ALTER TABLE transactions ADD COLUMN user_created VARCHAR(255) DEFAULT NULL");
+        } catch (PDOException $e) {
+            // Column might already exist, ignore error
+        }
         
         return $pdo;
     } catch (PDOException $e) {

@@ -1,5 +1,12 @@
 <?php
+session_start();
 require_once 'config.php';
+
+// Check if user is logged in
+if (!isset($_SESSION['order_user'])) {
+    http_response_code(401);
+    jsonResponse(false, null, 'User not authenticated');
+}
 
 $method = $_SERVER['REQUEST_METHOD'];
 $db = getFinanceDb();
@@ -81,8 +88,8 @@ function handlePost($db) {
         
         // Insert transaction
         $stmt = $db->prepare("
-            INSERT INTO transactions (type, amount, description, category, date)
-            VALUES (?, ?, ?, ?, ?)
+            INSERT INTO transactions (type, amount, description, category, date, user_created)
+            VALUES (?, ?, ?, ?, ?, ?)
         ");
         
         $stmt->execute([
@@ -90,7 +97,8 @@ function handlePost($db) {
             $input['amount'],
             $input['description'],
             $input['category'],
-            $input['date']
+            $input['date'],
+            $_SESSION['order_user']
         ]);
         
         $transactionId = $db->lastInsertId();

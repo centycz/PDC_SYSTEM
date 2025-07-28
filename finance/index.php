@@ -1,3 +1,23 @@
+<?php
+session_start();
+
+// Check if user is logged in
+if (!isset($_SESSION['order_user'])) {
+    header('Location: /index.php');
+    exit;
+}
+
+// Get user information from session
+$user_name = $_SESSION['order_user'];
+$full_name = $_SESSION['order_full_name'];
+$user_role = $_SESSION['user_role'];
+
+// Check if user has permission to access finance system
+if (!in_array($user_role, ['admin', 'ragazzi'])) {
+    header('Location: /index.php');
+    exit;
+}
+?>
 <!DOCTYPE html>
 <html lang="cs">
 <head>
@@ -11,6 +31,15 @@
         <header class="header">
             <h1>Finanční sledování</h1>
             <p>Sledování příjmů a výdajů - Pizza dal Cortile</p>
+            
+            <!-- User Info Section -->
+            <div class="user-info-header">
+                <div class="user-welcome">
+                    🙋‍♂️ Přihlášen jako: <strong><?= htmlspecialchars($full_name) ?></strong> 
+                    <span class="user-role">(<?= ucfirst($user_role) ?>)</span>
+                </div>
+                <a href="/index.php" class="back-btn">← Zpět na hlavní stránku</a>
+            </div>
         </header>
 
         <!-- Statistics Overview -->
@@ -154,6 +183,14 @@
     <!-- Alert Messages -->
     <div id="alertContainer"></div>
 
+    <script>
+        // Pass PHP session data to JavaScript
+        window.userData = {
+            username: '<?= htmlspecialchars($user_name) ?>',
+            fullName: '<?= htmlspecialchars($full_name) ?>',
+            role: '<?= htmlspecialchars($user_role) ?>'
+        };
+    </script>
     <script src="js/app.js"></script>
 </body>
 </html>
