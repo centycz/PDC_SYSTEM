@@ -423,6 +423,7 @@ $user_role = $_SESSION['is_admin'] ? 'admin' : 'user';
                 btn.disabled = true;
                 btn.textContent = 'Označuji...';
 
+                console.log(`🍝 Marking pasta item ${id} as ready...`);
                 fetch(API + '?action=item-status', {
                     method: 'POST',
                     headers: {'Content-Type': 'application/json'},
@@ -431,8 +432,14 @@ $user_role = $_SESSION['is_admin'] ? 'admin' : 'user';
                         status: 'ready'
                     })
                 })
-                .then(response => response.json())
+                .then(response => {
+                    if (!response.ok) {
+                        throw new Error(`HTTP ${response.status}: ${response.statusText}`);
+                    }
+                    return response.json();
+                })
                 .then(result => {
+                    console.log('📦 Mark ready response:', result);
                     if (result.success) {
                         // Odstraň z DOM až po úspěšném API volání
                         const itemElement = btn.closest('.order-item');
@@ -443,13 +450,13 @@ $user_role = $_SESSION['is_admin'] ? 'admin' : 'user';
                             renderOrders();
                         }
                     } else {
-                        console.error('Chyba při označování položky jako hotové:', result.message);
+                        console.error('❌ API error:', result.error);
                         btn.disabled = false;
                         btn.textContent = 'Hotovo';
                     }
                 })
                 .catch(error => {
-                    console.error('Chyba při označování položky jako hotové:', error);
+                    console.error('❌ Network Error:', error);
                     btn.disabled = false;
                     btn.textContent = 'Hotovo';
                 });
@@ -483,6 +490,7 @@ function autoReleaseDesserts() {
 }
 
 function autoReleaseItem(itemId, reason) {
+    console.log(`🍰 Auto-releasing item ${itemId}: ${reason}`);
     fetch(API + '?action=item-status', {
         method: 'POST',
         headers: {'Content-Type': 'application/json'},
@@ -492,8 +500,14 @@ function autoReleaseItem(itemId, reason) {
             note: `Auto-povoleno: ${reason}`
         })
     })
-    .then(response => response.json())
+    .then(response => {
+        if (!response.ok) {
+            throw new Error(`HTTP ${response.status}: ${response.statusText}`);
+        }
+        return response.json();
+    })
     .then(result => {
+        console.log('📦 Auto-release response:', result);
         if (result.success) {
             console.log(`✅ Auto-released item ${itemId}: ${reason}`);
         } else {
@@ -505,9 +519,16 @@ function autoReleaseItem(itemId, reason) {
     });
 }
 function loadOrders() {
+    console.log('🔄 Loading pasta kitchen orders...');
     fetch(API + '?action=pasta-kitchen-items')
-        .then(r => r.json())
+        .then(r => {
+            if (!r.ok) {
+                throw new Error(`HTTP ${r.status}: ${r.statusText}`);
+            }
+            return r.json();
+        })
         .then(res => {
+            console.log('📦 Pasta Kitchen API response:', res);
             if (res.success) {
                 const allItems = res.data.items;
                 window.allOrderItems = allItems;
@@ -517,6 +538,7 @@ function loadOrders() {
                 );
                 
                 items = pastaItems;
+                console.log(`✅ Loaded ${pastaItems.length} pasta items`);
                 
                 // NOVÉ: Automaticky povol dezerty
                 autoReleaseDesserts();
@@ -525,7 +547,7 @@ function loadOrders() {
                 sortItems();
                 renderOrders();
             } else {
-                console.error('API error:', res.error);
+                console.error('❌ API error:', res.error);
                 items = [];
                 window.allOrderItems = [];
                 updatePastaStats([]);
@@ -534,7 +556,11 @@ function loadOrders() {
             updateLastUpdateTime();
         })
         .catch(error => {
-            console.error('Chyba při načítání objednávek:', error);
+            console.error('❌ Network Error:', error);
+            items = [];
+            window.allOrderItems = [];
+            updatePastaStats([]);
+            updateLastUpdateTime();
         });
 }
 

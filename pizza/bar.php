@@ -438,25 +438,31 @@ $user_role = $_SESSION['user_role'] ?? 'user';
         // Načtení objednávek
         async function refreshOrders() {
             try {
-                const response = await fetch(API_BASE, {
-                    method: 'POST',
-                    headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({ action: 'get_bar_orders' })
+                console.log('🔄 Loading bar orders...');
+                const response = await fetch(`${API_BASE}?action=bar-items`, {
+                    method: 'GET',
+                    headers: { 'Content-Type': 'application/json' }
                 });
                 
+                if (!response.ok) {
+                    throw new Error(`HTTP ${response.status}: ${response.statusText}`);
+                }
+                
                 const data = await response.json();
+                console.log('📦 Bar API response:', data);
                 
                 if (data.success) {
-                    ordersData = data.data || [];
+                    ordersData = data.data?.items || [];
+                    console.log(`✅ Loaded ${ordersData.length} bar items`);
                     renderOrders();
                     updateStats();
                 } else {
-                    console.error('Chyba při načítání objednávek:', data.message);
-                    showNotification('Chyba při načítání objednávek', 'error');
+                    console.error('❌ API Error:', data.error);
+                    showNotification(`Chyba při načítání objednávek: ${data.error}`, 'error');
                 }
             } catch (error) {
-                console.error('Chyba API:', error);
-                showNotification('Chyba spojení se serverem', 'error');
+                console.error('❌ Network Error:', error);
+                showNotification(`Chyba spojení se serverem: ${error.message}`, 'error');
             }
         }
 
@@ -477,87 +483,55 @@ $user_role = $_SESSION['user_role'] ?? 'user';
 
             // Seskupení podle stolů
             const tableGroups = {};
-            ordersData.forEach(order => {
-                const tableCode = order.table_code;
+            ordersData.forEach(item => {
+                const tableCode = item.table_code || item.table_number;
                 if (!tableGroups[tableCode]) {
                     tableGroups[tableCode] = [];
                 }
-                tableGroups[tableCode].push(order);
+                tableGroups[tableCode].push(item);
             });
 
-            const tablesHTML = Object.entries(tableGroups).map(([tableCode, orders]) => {
-                return renderTableCard(tableCode, orders);
+            const tablesHTML = Object.entries(tableGroups).map(([tableCode, items]) => {
+                return renderTableCard(tableCode, items);
             }).join('');
 
             container.innerHTML = `<div class="orders-grid">${tablesHTML}</div>`;
         }
 
         // Vykreslení karty stolu
-        function renderTableCard(tableCode, orders) {
+        function renderTableCard(tableCode, items) {
             const tableNumber = tableCode;
-            
-            // Parsování všech položek
-            const allItems = [];
-            orders.forEach(order => {
-                try {
-                    const items = JSON.parse(order.items || '[]');
-                    items.forEach(item => {
-                        allItems.push({
-                            ...item,
-                            order_id: order.id,
-                            order_time: order.created_at,
-                            id: `${order.id}_${item.id || Math.random()}`,
-                            status: order.status || 'pending'
-                        });
-                    });
-                } catch (e) {
-                    console.error('Chyba při parsování položek:', e);
-                }
-            });
-
-            // Filtrování pro bar (jen nápoje)
-            const barItems = allItems.filter(item => {
-                const category = item.kategorie || '';
-                return [
-                    'negroni', 'spritz', 'koktejl', 'digestiv', 
-                    'vino', 'pivo', 'nealko', 'drink'
-                ].includes(category.toLowerCase());
-            });
-
-            if (barItems.length === 0) {
-                return ''; // Nezobrazovat stoly bez barových položek
-            }
 
             // Určení stavu stolu
-            const hasPending = barItems.some(item => item.status === 'pending');
-            const hasPreparing = barItems.some(item => item.status === 'preparing');
+            const hasPending = items.some(item => item.status === 'pending');
+            const hasPreparing = items.some(item => item.status === 'preparing');
             
             let cardClass = 'table-card';
             if (hasPending) cardClass += ' has-pending';
             else if (hasPreparing) cardClass += ' has-preparing';
 
             // Nejstarší objednávka pro čas
-            const oldestTime = Math.min(...orders.map(o => new Date(o.created_at).getTime()));
+            const oldestTime = Math.min(...items.map(item => new Date(item.created_at).getTime()));
             const timeAgo = formatTimeAgo(new Date(oldestTime));
 
             // Vykreslení položek
-            const itemsHTML = barItems.map(drink => {
-                const name = drink.item_name || drink.nazev || drink.name || 'Nápoj';
-                const quantity = drink.quantity || 1;
-                const note = drink.note || '';
+            const itemsHTML = items.map(item => {
+                const name = item.item_name || 'Nápoj';
+                const quantity = item.quantity || 1;
+                const note = item.note || '';
                 
                 let itemClass = 'order-item';
                 let statusText = '';
                 let actionButton = '';
                 
-                if (drink.status === 'pending') {
+                if (item.status === 'pending') {
                     itemClass += ' pending';
-                    actionButton = `<button class="btn btn-ready" onclick="markReady('${drink.id}', '${name}', this)">Hotovo</button>`;
-                } else if (drink.status === 'preparing') {
+                    actionButton = `<button class="btn btn-ready" onclick="markReady('${item.id}', '${name}', this)">Hotovo</button>`;
+                } else if (item.status === 'preparing') {
                     itemClass += ' preparing';
                     statusText = '<div style="color: #f39c12; font-weight: bold;">🍸 Připravuje se</div>';
-                    actionButton = `<button class="btn btn-ready" onclick="markReady('${drink.id}', '${name}', this)">Hotovo</button>`;
-                } else if (drink.status === 'ready') {
+                    actionButton = `<button class="btn btn-ready" onclick="markReady('${item.id}', '${name}', this)">Hotovo</button>`;
+                } else if (item.status === 'ready') {
                     itemClass += ' ready';
                     statusText = '<div style="color: #27ae60; font-weight: bold;">✅ Hotový</div>';
                 }
@@ -592,28 +566,35 @@ $user_role = $_SESSION['user_role'] ?? 'user';
                 button.disabled = true;
                 button.textContent = 'Označování...';
                 
-                const response = await fetch(API_BASE, {
+                console.log(`🍺 Marking drink ${itemId} as ready...`);
+                const response = await fetch(`${API_BASE}?action=item-status`, {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json' },
                     body: JSON.stringify({
-                        action: 'mark_drink_ready',
-                        item_id: itemId
+                        item_id: itemId,
+                        status: 'ready'
                     })
                 });
                 
+                if (!response.ok) {
+                    throw new Error(`HTTP ${response.status}: ${response.statusText}`);
+                }
+                
                 const data = await response.json();
+                console.log('📦 Mark ready response:', data);
                 
                 if (data.success) {
                     showNotification(`${itemName} označen jako hotový!`, 'success');
                     refreshOrders();
                 } else {
-                    showNotification('Chyba: ' + data.message, 'error');
+                    console.error('❌ API Error:', data.error);
+                    showNotification(`Chyba: ${data.error}`, 'error');
                     button.disabled = false;
                     button.textContent = 'Hotovo';
                 }
             } catch (error) {
-                console.error('Chyba API:', error);
-                showNotification('Chyba spojení se serverem', 'error');
+                console.error('❌ Network Error:', error);
+                showNotification(`Chyba spojení se serverem: ${error.message}`, 'error');
                 button.disabled = false;
                 button.textContent = 'Hotovo';
             }
@@ -621,31 +602,9 @@ $user_role = $_SESSION['user_role'] ?? 'user';
 
         // Aktualizace statistik
         function updateStats() {
-            const allItems = [];
-            
-            ordersData.forEach(order => {
-                try {
-                    const items = JSON.parse(order.items || '[]');
-                    items.forEach(item => {
-                        const category = item.kategorie || '';
-                        if ([
-                            'negroni', 'spritz', 'koktejl', 'digestiv', 
-                            'vino', 'pivo', 'nealko', 'drink'
-                        ].includes(category.toLowerCase())) {
-                            allItems.push({
-                                ...item,
-                                status: order.status || 'pending'
-                            });
-                        }
-                    });
-                } catch (e) {
-                    console.error('Chyba při parsování položek pro statistiky:', e);
-                }
-            });
-
-            const pending = allItems.filter(item => item.status === 'pending').length;
-            const preparing = allItems.filter(item => item.status === 'preparing').length;
-            const ready = allItems.filter(item => item.status === 'ready').length;
+            const pending = ordersData.filter(item => item.status === 'pending').length;
+            const preparing = ordersData.filter(item => item.status === 'preparing').length;
+            const ready = ordersData.filter(item => item.status === 'ready').length;
 
             document.getElementById('pendingCount').textContent = pending;
             document.getElementById('preparingCount').textContent = preparing;

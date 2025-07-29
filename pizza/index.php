@@ -868,21 +868,28 @@ $user_role = $_SESSION['is_admin'] ? 'admin' : 'user';
         // Načtení stolů
         async function refreshTables() {
             try {
-                const response = await fetch(API_BASE, {
-                    method: 'POST',
-                    headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({ action: 'get_tables' })
+                console.log('🔄 Loading tables...');
+                const response = await fetch(`${API_BASE}?action=tables`, {
+                    method: 'GET',
+                    headers: { 'Content-Type': 'application/json' }
                 });
                 
+                if (!response.ok) {
+                    throw new Error(`HTTP ${response.status}: ${response.statusText}`);
+                }
+                
                 const data = await response.json();
+                console.log('📦 Tables API response:', data);
                 
                 if (data.success) {
-                    renderTables(data.data);
+                    renderTables(data.data.tables || []);
                 } else {
-                    console.error('Chyba při načítání stolů:', data.message);
+                    console.error('❌ API Error:', data.error);
+                    showNotification(`Chyba při načítání stolů: ${data.error}`, 'error');
                 }
             } catch (error) {
-                console.error('Chyba API:', error);
+                console.error('❌ Network Error:', error);
+                showNotification(`Chyba spojení se serverem: ${error.message}`, 'error');
             }
         }
 
@@ -964,23 +971,56 @@ $user_role = $_SESSION['is_admin'] ? 'admin' : 'user';
         // Načtení menu
         async function refreshMenu() {
             try {
-                const response = await fetch(API_BASE, {
-                    method: 'POST',
-                    headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({ action: 'get_menu' })
+                console.log('🔄 Loading menu...');
+                
+                // Load pizza menu
+                const pizzaResponse = await fetch(`${API_BASE}?action=pizza-menu`, {
+                    method: 'GET',
+                    headers: { 'Content-Type': 'application/json' }
                 });
                 
-                const data = await response.json();
+                // Load drink menu
+                const drinkResponse = await fetch(`${API_BASE}?action=drink-menu`, {
+                    method: 'GET',
+                    headers: { 'Content-Type': 'application/json' }
+                });
                 
-                if (data.success) {
-                    menuData = data.data;
+                if (!pizzaResponse.ok || !drinkResponse.ok) {
+                    throw new Error(`HTTP Error: Pizza ${pizzaResponse.status}, Drinks ${drinkResponse.status}`);
+                }
+                
+                const pizzaData = await pizzaResponse.json();
+                const drinkData = await drinkResponse.json();
+                
+                console.log('📦 Pizza menu response:', pizzaData);
+                console.log('📦 Drink menu response:', drinkData);
+                
+                if (pizzaData.success && drinkData.success) {
+                    // Combine both menus and add category info
+                    const pizzas = (pizzaData.data.pizzas || []).map(item => ({
+                        ...item,
+                        kategorie: 'pizza',
+                        item_type: 'pizza'
+                    }));
+                    
+                    const drinks = (drinkData.data.drinks || []).map(item => ({
+                        ...item,
+                        kategorie: 'drink',
+                        item_type: 'drink'
+                    }));
+                    
+                    menuData = [...pizzas, ...drinks];
+                    console.log(`✅ Loaded ${menuData.length} menu items`);
+                    
                     renderMenuCategories();
                     renderMenuItems();
                 } else {
-                    console.error('Chyba při načítání menu:', data.message);
+                    console.error('❌ Menu API Error:', pizzaData.error || drinkData.error);
+                    showNotification(`Chyba při načítání menu: ${pizzaData.error || drinkData.error}`, 'error');
                 }
             } catch (error) {
-                console.error('Chyba API:', error);
+                console.error('❌ Network Error:', error);
+                showNotification(`Chyba spojení se serverem: ${error.message}`, 'error');
             }
         }
 
@@ -1100,18 +1140,24 @@ $user_role = $_SESSION['is_admin'] ? 'admin' : 'user';
             }
             
             try {
-                const response = await fetch(API_BASE, {
+                console.log('🔄 Submitting order...');
+                const response = await fetch(`${API_BASE}?action=add-order`, {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json' },
                     body: JSON.stringify({
-                        action: 'create_order',
-                        table_code: selectedTable,
+                        table: selectedTable,
                         items: cart,
-                        employee_name: employeeName
+                        employee_name: employeeName,
+                        customer_name: ''
                     })
                 });
                 
+                if (!response.ok) {
+                    throw new Error(`HTTP ${response.status}: ${response.statusText}`);
+                }
+                
                 const data = await response.json();
+                console.log('📦 Order submit response:', data);
                 
                 if (data.success) {
                     showNotification('Objednávka byla úspěšně odeslána!', 'success');
@@ -1133,24 +1179,28 @@ $user_role = $_SESSION['is_admin'] ? 'admin' : 'user';
             if (!selectedTable) return;
             
             try {
-                const response = await fetch(API_BASE, {
-                    method: 'POST',
-                    headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({ 
-                        action: 'get_table_orders',
-                        table_code: selectedTable 
-                    })
+                console.log(`🔄 Loading orders for table ${selectedTable}...`);
+                const response = await fetch(`${API_BASE}?action=table-orders&table_number=${selectedTable}`, {
+                    method: 'GET',
+                    headers: { 'Content-Type': 'application/json' }
                 });
                 
+                if (!response.ok) {
+                    throw new Error(`HTTP ${response.status}: ${response.statusText}`);
+                }
+                
                 const data = await response.json();
+                console.log('📦 Table orders response:', data);
                 
                 if (data.success) {
-                    renderOrders(data.data);
+                    renderOrders(data.data.orders || []);
                 } else {
-                    console.error('Chyba při načítání objednávek:', data.message);
+                    console.error('❌ API Error:', data.error);
+                    showNotification(`Chyba při načítání objednávek: ${data.error}`, 'error');
                 }
             } catch (error) {
-                console.error('Chyba API:', error);
+                console.error('❌ Network Error:', error);
+                showNotification(`Chyba spojení se serverem: ${error.message}`, 'error');
             }
         }
 
@@ -1198,33 +1248,13 @@ $user_role = $_SESSION['is_admin'] ? 'admin' : 'user';
             }).join('');
         }
 
-        // Dokončení objednávky
+        // Dokončení objednávky - TODO: Implement in API
         async function completeOrder(orderId) {
-            if (!confirm('Označit objednávku jako dokončenou?')) return;
+            // if (!confirm('Označit objednávku jako dokončenou?')) return;
             
-            try {
-                const response = await fetch(API_BASE, {
-                    method: 'POST',
-                    headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({
-                        action: 'complete_order',
-                        order_id: orderId
-                    })
-                });
-                
-                const data = await response.json();
-                
-                if (data.success) {
-                    showNotification('Objednávka dokončena!', 'success');
-                    refreshTables();
-                    refreshOrders();
-                } else {
-                    showNotification('Chyba: ' + data.message, 'error');
-                }
-            } catch (error) {
-                console.error('Chyba API:', error);
-                showNotification('Chyba spojení se serverem', 'error');
-            }
+            // This functionality needs to be implemented in the API
+            showNotification('Funkce dokončení objednávky zatím není implementována', 'warning');
+            console.log('TODO: Implement complete_order API endpoint');
         }
 
         // Tisk objednávky
@@ -1232,33 +1262,13 @@ $user_role = $_SESSION['is_admin'] ? 'admin' : 'user';
             window.open(`print-order.php?id=${orderId}`, '_blank');
         }
 
-        // Zrušení objednávky
+        // Zrušení objednávky - TODO: Implement in API
         async function cancelOrder(orderId) {
-            if (!confirm('Opravdu chcete zrušit tuto objednávku?')) return;
+            // if (!confirm('Opravdu chcete zrušit tuto objednávku?')) return;
             
-            try {
-                const response = await fetch(API_BASE, {
-                    method: 'POST',
-                    headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({
-                        action: 'cancel_order',
-                        order_id: orderId
-                    })
-                });
-                
-                const data = await response.json();
-                
-                if (data.success) {
-                    showNotification('Objednávka zrušena!', 'success');
-                    refreshTables();
-                    refreshOrders();
-                } else {
-                    showNotification('Chyba: ' + data.message, 'error');
-                }
-            } catch (error) {
-                console.error('Chyba API:', error);
-                showNotification('Chyba spojení se serverem', 'error');
-            }
+            // This functionality needs to be implemented in the API
+            showNotification('Funkce zrušení objednávky zatím není implementována', 'warning');
+            console.log('TODO: Implement cancel_order API endpoint');
         }
 
         // Hlavní smyčka

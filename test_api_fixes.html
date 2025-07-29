@@ -1,0 +1,151 @@
+<!DOCTYPE html>
+<html lang="cs">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>API Test</title>
+</head>
+<body>
+    <h1>API Test</h1>
+    <button onclick="testKitchenAPI()">Test Kitchen API</button>
+    <button onclick="testBarAPI()">Test Bar API</button>
+    <button onclick="testTablesAPI()">Test Tables API</button>
+    <button onclick="testMenuAPI()">Test Menu API</button>
+    <div id="results"></div>
+
+    <script>
+        const API_BASE = '/pizza/api/restaurant-api.php';
+        
+        async function testKitchenAPI() {
+            try {
+                console.log('🔄 Testing Kitchen API...');
+                const response = await fetch(`${API_BASE}?action=kitchen-items`, {
+                    method: 'GET',
+                    headers: { 'Content-Type': 'application/json' }
+                });
+                
+                const data = await response.json();
+                console.log('Kitchen API Response:', data);
+                
+                document.getElementById('results').innerHTML += `
+                    <h3>Kitchen API</h3>
+                    <p>Status: ${response.ok ? 'OK' : 'Error'}</p>
+                    <p>Success: ${data.success}</p>
+                    <p>Items: ${data.data?.items?.length || 0}</p>
+                    <pre>${JSON.stringify(data, null, 2)}</pre>
+                    <hr>
+                `;
+            } catch (error) {
+                console.error('Kitchen API Error:', error);
+                document.getElementById('results').innerHTML += `
+                    <h3>Kitchen API</h3>
+                    <p>Error: ${error.message}</p>
+                    <hr>
+                `;
+            }
+        }
+        
+        async function testBarAPI() {
+            try {
+                console.log('🔄 Testing Bar API...');
+                const response = await fetch(`${API_BASE}?action=bar-items`, {
+                    method: 'GET',
+                    headers: { 'Content-Type': 'application/json' }
+                });
+                
+                const data = await response.json();
+                console.log('Bar API Response:', data);
+                
+                document.getElementById('results').innerHTML += `
+                    <h3>Bar API</h3>
+                    <p>Status: ${response.ok ? 'OK' : 'Error'}</p>
+                    <p>Success: ${data.success}</p>
+                    <p>Items: ${data.data?.items?.length || 0}</p>
+                    <pre>${JSON.stringify(data, null, 2)}</pre>
+                    <hr>
+                `;
+            } catch (error) {
+                console.error('Bar API Error:', error);
+                document.getElementById('results').innerHTML += `
+                    <h3>Bar API</h3>
+                    <p>Error: ${error.message}</p>
+                    <hr>
+                `;
+            }
+        }
+        
+        async function testTablesAPI() {
+            try {
+                console.log('🔄 Testing Tables API...');
+                const response = await fetch(`${API_BASE}?action=tables`, {
+                    method: 'GET',
+                    headers: { 'Content-Type': 'application/json' }
+                });
+                
+                const data = await response.json();
+                console.log('Tables API Response:', data);
+                
+                document.getElementById('results').innerHTML += `
+                    <h3>Tables API</h3>
+                    <p>Status: ${response.ok ? 'OK' : 'Error'}</p>
+                    <p>Success: ${data.success}</p>
+                    <p>Tables: ${data.data?.tables?.length || 0}</p>
+                    <pre>${JSON.stringify(data, null, 2)}</pre>
+                    <hr>
+                `;
+            } catch (error) {
+                console.error('Tables API Error:', error);
+                document.getElementById('results').innerHTML += `
+                    <h3>Tables API</h3>
+                    <p>Error: ${error.message}</p>
+                    <hr>
+                `;
+            }
+        }
+        
+        async function testMenuAPI() {
+            try {
+                console.log('🔄 Testing Menu API...');
+                
+                // Test pizza menu
+                const pizzaResponse = await fetch(`${API_BASE}?action=pizza-menu`, {
+                    method: 'GET',
+                    headers: { 'Content-Type': 'application/json' }
+                });
+                
+                // Test drink menu
+                const drinkResponse = await fetch(`${API_BASE}?action=drink-menu`, {
+                    method: 'GET',
+                    headers: { 'Content-Type': 'application/json' }
+                });
+                
+                const pizzaData = await pizzaResponse.json();
+                const drinkData = await drinkResponse.json();
+                
+                console.log('Pizza Menu Response:', pizzaData);
+                console.log('Drink Menu Response:', drinkData);
+                
+                document.getElementById('results').innerHTML += `
+                    <h3>Menu API</h3>
+                    <p>Pizza Status: ${pizzaResponse.ok ? 'OK' : 'Error'}</p>
+                    <p>Pizza Success: ${pizzaData.success}</p>
+                    <p>Pizza Items: ${pizzaData.data?.pizzas?.length || 0}</p>
+                    <p>Drink Status: ${drinkResponse.ok ? 'OK' : 'Error'}</p>
+                    <p>Drink Success: ${drinkData.success}</p>
+                    <p>Drink Items: ${drinkData.data?.drinks?.length || 0}</p>
+                    <pre>Pizza: ${JSON.stringify(pizzaData, null, 2)}</pre>
+                    <pre>Drinks: ${JSON.stringify(drinkData, null, 2)}</pre>
+                    <hr>
+                `;
+            } catch (error) {
+                console.error('Menu API Error:', error);
+                document.getElementById('results').innerHTML += `
+                    <h3>Menu API</h3>
+                    <p>Error: ${error.message}</p>
+                    <hr>
+                `;
+            }
+        }
+    </script>
+</body>
+</html>
