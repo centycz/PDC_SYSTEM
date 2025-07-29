@@ -379,7 +379,7 @@ $user_role = $_SESSION['user_role'];
             <p>Systém pro správu rezervací restaurace</p>
         </div>
         <div class="nav-links">
-            <a href="../index.html" class="nav-link" id="nav-obsluha">Zpět</a>
+            <a href="/index.php" class="nav-link" id="nav-obsluha">Zpět</a>
         </div>
         
         <div class="tabs">
