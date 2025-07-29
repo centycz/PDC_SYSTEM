@@ -3,14 +3,14 @@ session_start();
 
 // Check if user is logged in
 if (!isset($_SESSION['order_user'])) {
-    header('Location: /index.php');
+    header('Location: login.php');
     exit;
 }
 
 // Get user information from session
 $user_name = $_SESSION['order_user'];
 $full_name = $_SESSION['order_full_name'];
-$user_role = $_SESSION['user_role'] ?? 'user';
+$user_role = $_SESSION['is_admin'] ? 'admin' : 'user';
 ?>
 <!DOCTYPE html>
 <html lang="cs">
@@ -714,10 +714,11 @@ $user_role = $_SESSION['user_role'] ?? 'user';
     <!-- Navigation Header -->
     <div class="nav-header">
         <div class="nav-left">
-            <a href="/index.php" class="back-btn">← ZPĚT NA HLAVNÍ STRÁNKU</a>
+            <a href="login.php" class="back-btn">← ZPĚT NA PŘIHLÁŠENÍ</a>
         </div>
         <div class="user-info">
             Přihlášen jako: <strong><?= htmlspecialchars($full_name) ?></strong> (<?= ucfirst($user_role) ?>)
+            <button onclick="logout()" class="back-btn" style="margin-left: 15px;">🚪 Odhlásit se</button>
         </div>
     </div>
 
@@ -852,7 +853,7 @@ $user_role = $_SESSION['user_role'] ?? 'user';
         function logout() {
             if (confirm('Opravdu se chcete odhlásit?')) {
                 localStorage.removeItem('employeeName');
-                window.location.href = '/index.php?logout=1';
+                window.location.href = 'login.php?logout=1';
             }
         }
 

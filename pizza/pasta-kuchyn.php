@@ -1,3 +1,17 @@
+<?php
+session_start();
+
+// Check if user is logged in
+if (!isset($_SESSION['order_user'])) {
+    header('Location: login.php');
+    exit;
+}
+
+// Get user information from session
+$user_name = $_SESSION['order_user'];
+$full_name = $_SESSION['order_full_name'];
+$user_role = $_SESSION['is_admin'] ? 'admin' : 'user';
+?>
 <!DOCTYPE html>
 <html lang="cs">
 <head>
@@ -329,16 +343,27 @@
     </style>
 </head>
 <body>
+    <!-- Navigation Header -->
+    <div style="display: flex; justify-content: space-between; align-items: center; background: rgba(255,255,255,0.15); padding: 10px 20px; border-radius: 10px; margin-bottom: 20px; backdrop-filter: blur(10px);">
+        <div style="display: flex; align-items: center; gap: 15px;">
+            <a href="login.php" style="background: rgba(255,255,255,0.9); color: #2E8B57; text-decoration: none; padding: 8px 16px; border-radius: 6px; font-weight: 600; transition: all 0.3s ease;">← ZPĚT NA PŘIHLÁŠENÍ</a>
+        </div>
+        <div style="color: white; font-size: 14px; text-shadow: 1px 1px 2px rgba(0,0,0,0.3);">
+            Přihlášen jako: <strong><?= htmlspecialchars($full_name) ?></strong> (<?= ucfirst($user_role) ?>)
+            <button onclick="logout()" style="background: rgba(255,255,255,0.9); color: #2E8B57; border: none; padding: 8px 16px; border-radius: 6px; font-weight: 600; margin-left: 15px; cursor: pointer;">🚪 Odhlásit se</button>
+        </div>
+    </div>
+    
     <div class="header">
         <h1>🍝 Pasta Kuchyně</h1>
         <div class="nav-links">
-            <a href="index.html" class="nav-link" id="nav-obsluha">🏠 Objednávky</a>
-            <a href="kitchen.html" class="nav-link" id="nav-kuchyn">🍕 Pizza kuchyň</a>
-            <a href="pasta-kuchyn.html" class="nav-link active" id="nav-pasta">🍝 Pasta kuchyň</a>
-            <a href="bar.html" class="nav-link" id="nav-bar">🍺 Bar</a>
-            <a href="serving.html" class="nav-link" id="nav-servirovani">🍽️ Servírování</a>
-            <a href="billing.html" class="nav-link" id="nav-uctovani">💰 Účtování</a>
-            <a href="historie.html" class="nav-link">📋 Historie</a>
+            <a href="index.php" class="nav-link" id="nav-obsluha">🏠 Objednávky</a>
+            <a href="kitchen.php" class="nav-link" id="nav-kuchyn">🍕 Pizza kuchyň</a>
+            <a href="pasta-kuchyn.php" class="nav-link active" id="nav-pasta">🍝 Pasta kuchyň</a>
+            <a href="bar.php" class="nav-link" id="nav-bar">🍺 Bar</a>
+            <a href="serving.php" class="nav-link" id="nav-servirovani">🍽️ Servírování</a>
+            <a href="billing.php" class="nav-link" id="nav-uctovani">💰 Účtování</a>
+            <a href="historie.php" class="nav-link">📋 Historie</a>
         </div>
     </div>
     
@@ -385,6 +410,13 @@
     <script>
         const API = 'api/restaurant-api.php';
         let items = [];
+        
+        // Logout function
+        function logout() {
+            if (confirm('Opravdu se chcete odhlásit?')) {
+                window.location.href = 'login.php?logout=1';
+            }
+        }
 
         function markReady(id, name, btn) {
             if (btn) {

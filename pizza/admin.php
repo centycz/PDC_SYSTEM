@@ -1,3 +1,23 @@
+<?php
+session_start();
+
+// Check if user is logged in
+if (!isset($_SESSION['order_user'])) {
+    header('Location: login.php');
+    exit;
+}
+
+// Get user information from session
+$user_name = $_SESSION['order_user'];
+$full_name = $_SESSION['order_full_name'];
+$user_role = $_SESSION['is_admin'] ? 'admin' : 'user';
+
+// Check if user is admin
+if (!$_SESSION['is_admin']) {
+    header('Location: index.php');
+    exit;
+}
+?>
 <!DOCTYPE html>
 <html lang="cs">
 <head>
@@ -222,14 +242,25 @@
     </style>
 </head>
 <body>
+    <!-- Navigation Header -->
+    <div style="display: flex; justify-content: space-between; align-items: center; background: rgba(255,255,255,0.15); padding: 10px 20px; border-radius: 10px; margin-bottom: 20px; backdrop-filter: blur(10px);">
+        <div style="display: flex; align-items: center; gap: 15px;">
+            <a href="index.php" style="background: rgba(255,255,255,0.9); color: #ee5a24; text-decoration: none; padding: 8px 16px; border-radius: 6px; font-weight: 600; transition: all 0.3s ease;">← ZPĚT NA HLAVNÍ STRÁNKU</a>
+        </div>
+        <div style="color: white; font-size: 14px; text-shadow: 1px 1px 2px rgba(0,0,0,0.3);">
+            Přihlášen jako: <strong><?= htmlspecialchars($full_name) ?></strong> (<?= ucfirst($user_role) ?>)
+            <button onclick="logout()" style="background: rgba(255,255,255,0.9); color: #ee5a24; border: none; padding: 8px 16px; border-radius: 6px; font-weight: 600; margin-left: 15px; cursor: pointer;">🚪 Odhlásit se</button>
+        </div>
+    </div>
+    
     <div class="container">
         <div id="alerts"></div>
         <div class="card">
             <h1>Food Admin - Správa Menu</h1>
             <div class="nav-links">
-                <a href="index.html">Domů</a>
+                <a href="index.php">Domů</a>
                 <a href="bar-admin.html">Bar Admin</a>
-                <a href="data.html">Statistiky</a>
+                <a href="data.php">Statistiky</a>
             </div>
         </div>
         
@@ -365,6 +396,13 @@
     <script>
         const API_BASE = 'api/restaurant-api.php';
         let pizzas = [];
+        
+        // Logout function
+        function logout() {
+            if (confirm('Opravdu se chcete odhlásit?')) {
+                window.location.href = 'login.php?logout=1';
+            }
+        }
 
         // NOVÉ FUNKCE PRO FOOD COST KALKULACI
         function calculateMargin() {
