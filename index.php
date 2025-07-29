@@ -18,8 +18,11 @@ if (isset($_GET['logout'])) {
     exit;
 }
 
-// Handle login
+// Handle login and registration
 $login_error = '';
+$register_error = '';
+$register_success = '';
+
 if ($_POST['action'] ?? '' === 'login') {
     $username = trim($_POST['username'] ?? '');
     $password = $_POST['password'] ?? '';
@@ -53,6 +56,53 @@ if ($_POST['action'] ?? '' === 'login') {
         }
     } else {
         $login_error = 'Vyplňte všechna pole!';
+    }
+}
+
+if ($_POST['action'] ?? '' === 'register') {
+    $username = trim($_POST['reg_username'] ?? '');
+    $password = $_POST['reg_password'] ?? '';
+    $full_name = trim($_POST['reg_full_name'] ?? '');
+    
+    if ($username && $password && $full_name && !isset($db_error)) {
+        // Validate username format
+        if (!preg_match('/^[a-zA-Z0-9._-]+$/', $username)) {
+            $register_error = 'Uživatelské jméno může obsahovat pouze písmena, číslice, tečku, podtržítko a pomlčku!';
+        } elseif (strlen($password) < 4) {
+            $register_error = 'Heslo musí mít minimálně 4 znaky!';
+        } else {
+            try {
+                // Check if username already exists
+                $stmt = $pdo->prepare("SELECT id FROM order_users WHERE username = ?");
+                $stmt->execute([$username]);
+                
+                if ($stmt->fetch()) {
+                    $register_error = 'Uživatel s tímto jménem už existuje!';
+                } else {
+                    // Create new user
+                    $password_hash = password_hash($password, PASSWORD_DEFAULT);
+                    $stmt = $pdo->prepare("
+                        INSERT INTO order_users (username, password_hash, full_name, is_admin, user_role) 
+                        VALUES (?, ?, ?, 0, 'user')
+                    ");
+                    $stmt->execute([$username, $password_hash, $full_name]);
+                    
+                    // Auto-login after successful registration
+                    $_SESSION['order_user'] = $username;
+                    $_SESSION['order_user_id'] = $pdo->lastInsertId();
+                    $_SESSION['order_full_name'] = $full_name;
+                    $_SESSION['is_admin'] = false;
+                    $_SESSION['user_role'] = 'user';
+                    
+                    header('Location: index.php');
+                    exit;
+                }
+            } catch(PDOException $e) {
+                $register_error = 'Chyba při registraci: ' . $e->getMessage();
+            }
+        }
+    } else {
+        $register_error = 'Vyplňte všechna pole!';
     }
 }
 
@@ -194,6 +244,44 @@ function canAccessTab($tab, $user_role) {
             text-align: center;
             margin-bottom: 20px;
             color: #2c3e50;
+        }
+
+        .form-tabs {
+            display: flex;
+            margin-bottom: 25px;
+            background: #f8f9fa;
+            border-radius: 10px;
+            padding: 5px;
+        }
+
+        .form-tab {
+            flex: 1;
+            padding: 12px 20px;
+            text-align: center;
+            border-radius: 8px;
+            cursor: pointer;
+            transition: all 0.3s ease;
+            font-weight: 600;
+            color: #666;
+        }
+
+        .form-tab.active {
+            background: #667eea;
+            color: white;
+            box-shadow: 0 2px 8px rgba(102, 126, 234, 0.3);
+        }
+
+        .form-tab:hover:not(.active) {
+            background: #e9ecef;
+            color: #333;
+        }
+
+        .form-panel {
+            display: none;
+        }
+
+        .form-panel.active {
+            display: block;
         }
 
         .login-form {
@@ -430,25 +518,74 @@ function canAccessTab($tab, $user_role) {
         <!-- Login Section (shown when not logged in) -->
         <?php if (!$is_logged_in): ?>
         <div class="login-section">
-            <h2>🔐 Přihlášení</h2>
-            <?php if ($login_error): ?>
-                <div class="login-error"><?= htmlspecialchars($login_error) ?></div>
-            <?php endif; ?>
-            <?php if (isset($db_error)): ?>
-                <div class="login-error"><?= htmlspecialchars($db_error) ?></div>
-            <?php endif; ?>
-            <form method="POST" class="login-form">
-                <input type="hidden" name="action" value="login">
-                <div class="form-group">
-                    <label for="username">Uživatelské jméno:</label>
-                    <input type="text" id="username" name="username" required placeholder="např. centycz" value="<?= htmlspecialchars($_POST['username'] ?? '') ?>">
-                </div>
-                <div class="form-group">
-                    <label for="password">Heslo:</label>
-                    <input type="password" id="password" name="password" required placeholder="Zadejte heslo">
-                </div>
-                <button type="submit" class="login-btn">🔓 Přihlásit se</button>
-            </form>
+            <h2>🔐 Přihlášení & Registrace</h2>
+            
+            <!-- Tab Navigation -->
+            <div class="form-tabs">
+                <div class="form-tab <?= $register_error ? '' : 'active' ?>" onclick="switchTab('login')">Přihlášení</div>
+                <div class="form-tab <?= $register_error ? 'active' : '' ?>" onclick="switchTab('register')">Registrace</div>
+            </div>
+            
+            <!-- Login Panel -->
+            <div id="login-panel" class="form-panel <?= $register_error ? '' : 'active' ?>">
+                <?php if ($login_error): ?>
+                    <div class="login-error"><?= htmlspecialchars($login_error) ?></div>
+                <?php endif; ?>
+                <?php if (isset($db_error)): ?>
+                    <div class="login-error"><?= htmlspecialchars($db_error) ?></div>
+                <?php endif; ?>
+                <form method="POST" class="login-form">
+                    <input type="hidden" name="action" value="login">
+                    <div class="form-group">
+                        <label for="username">Uživatelské jméno:</label>
+                        <input type="text" id="username" name="username" required placeholder="např. centycz" value="<?= htmlspecialchars($_POST['username'] ?? '') ?>">
+                    </div>
+                    <div class="form-group">
+                        <label for="password">Heslo:</label>
+                        <input type="password" id="password" name="password" required placeholder="Zadejte heslo">
+                    </div>
+                    <button type="submit" class="login-btn">🔓 Přihlásit se</button>
+                </form>
+            </div>
+            
+            <!-- Registration Panel -->
+            <div id="register-panel" class="form-panel <?= $register_error ? 'active' : '' ?>">
+                <?php if ($register_error): ?>
+                    <div class="login-error"><?= htmlspecialchars($register_error) ?></div>
+                <?php endif; ?>
+                <?php if ($register_success): ?>
+                    <div style="background: #d4edda; color: #155724; padding: 10px; border-radius: 8px; margin-bottom: 20px; text-align: center; border: 1px solid #c3e6cb;">
+                        <?= htmlspecialchars($register_success) ?>
+                    </div>
+                <?php endif; ?>
+                <?php if (isset($db_error)): ?>
+                    <div class="login-error"><?= htmlspecialchars($db_error) ?></div>
+                <?php endif; ?>
+                <form method="POST" class="login-form">
+                    <input type="hidden" name="action" value="register">
+                    <div class="form-group">
+                        <label for="reg_username">Uživatelské jméno:</label>
+                        <input type="text" id="reg_username" name="reg_username" required 
+                               placeholder="např. jan.novak" 
+                               pattern="[a-zA-Z0-9\._-]+" 
+                               title="Povolené znaky: písmena, číslice, tečka, podtržítko, pomlčka"
+                               value="<?= htmlspecialchars($_POST['reg_username'] ?? '') ?>">
+                    </div>
+                    <div class="form-group">
+                        <label for="reg_full_name">Celé jméno:</label>
+                        <input type="text" id="reg_full_name" name="reg_full_name" required 
+                               placeholder="Jan Novák"
+                               value="<?= htmlspecialchars($_POST['reg_full_name'] ?? '') ?>">
+                    </div>
+                    <div class="form-group">
+                        <label for="reg_password">Heslo:</label>
+                        <input type="password" id="reg_password" name="reg_password" required 
+                               minlength="4" 
+                               placeholder="Minimálně 4 znaky">
+                    </div>
+                    <button type="submit" class="login-btn">📝 Registrovat se</button>
+                </form>
+            </div>
         </div>
         <?php endif; ?>
 
@@ -602,6 +739,22 @@ function canAccessTab($tab, $user_role) {
                   '• OS: Raspberry Pi OS\n' +
                   '• Služby: Apache, PHP, MySQL\n' +
                   '• Aplikace: Pizza Restaurant, phpMyAdmin, Statistiky');
+        }
+
+        function switchTab(tab) {
+            // Hide all panels
+            document.querySelectorAll('.form-panel').forEach(panel => {
+                panel.classList.remove('active');
+            });
+            
+            // Hide all tabs
+            document.querySelectorAll('.form-tab').forEach(tabEl => {
+                tabEl.classList.remove('active');
+            });
+            
+            // Show selected panel and tab
+            document.getElementById(tab + '-panel').classList.add('active');
+            event.target.classList.add('active');
         }
 
         // Animate cards on load
