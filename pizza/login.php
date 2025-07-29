@@ -10,9 +10,15 @@ try {
     die("Chyba připojení: " . $e->getMessage());
 }
 
+// Handle logout
+if (isset($_GET['logout'])) {
+    session_destroy();
+    $success_message = "✅ Úspěšně odhlášen!";
+}
+
 // Přesměrování pokud už je přihlášen
 if (isset($_SESSION['order_user'])) {
-    header("Location: orders_system.php");
+    header("Location: index.php");
     exit;
 }
 
@@ -39,7 +45,7 @@ if ($_POST['action'] ?? false) {
                         $_SESSION['is_admin'] = (bool)$user['is_admin'];
                         
                         $_SESSION['success_message'] = "✅ Úspěšně přihlášen jako {$user['full_name']}!";
-                        header("Location: orders_system.php");
+                        header("Location: index.php");
                         exit;
                     } else {
                         $error_message = "❌ Nesprávné heslo!";
@@ -407,7 +413,7 @@ try {
         <div class="guest-access">
             <h3>👁️ Náhled pro hosty</h3>
             <p>Prohlédněte si objednávky bez možnosti editace</p>
-            <a href="orders_system.php?guest=1" class="btn btn-secondary">
+            <a href="index.php?guest=1" class="btn btn-secondary">
                 👀 Pokračovat jako host
             </a>
         </div>
