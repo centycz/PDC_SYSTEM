@@ -1,21 +1,7 @@
 <?php
-// Debug - zapnout error reporting
-error_reporting(E_ALL);
-ini_set('display_errors', 1);
-ini_set('log_errors', 1);
-ini_set('error_log', '/tmp/restaurant_debug.log');
-
-// Log každého requestu
-file_put_contents('/tmp/restaurant_debug.log', 
-    "\n=== " . date('Y-m-d H:i:s') . " ===\n" . 
-    "REQUEST: " . $_SERVER['REQUEST_METHOD'] . " " . $_SERVER['REQUEST_URI'] . "\n" .
-    "INPUT: " . file_get_contents('php://input') . "\n",
-    FILE_APPEND
-);
-
 define('AUTO_PRINT_ENABLED', true);
 define('PRINTER_RPI_IP', '192.168.30.203');
-define('PRINTER_RPI_PORT', 5000);                           // ✅ ZMĚNA
+define('PRINTER_RPI_PORT', 5000);
 define('PRINTER_TIMEOUT', 5);
 
 ob_start();
@@ -25,7 +11,6 @@ session_start();
 $jsonBody = json_decode(file_get_contents('php://input'), true);
 if (isset($jsonBody['employee_name'])) {
     $_SESSION['employee_name'] = mb_convert_encoding($jsonBody['employee_name'], 'UTF-8');
-    error_log("Setting employee name from JSON: " . $_SESSION['employee_name']);
 }
 
 header('Content-Type: application/json; charset=utf-8');

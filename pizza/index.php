@@ -729,9 +729,17 @@ $user_role = $_SESSION['is_admin'] ? 'admin' : 'user';
     <!-- Rychlé akce -->
     <div class="quick-actions">
         <a href="kitchen.php" class="quick-action-btn">👨‍🍳 Kuchyň</a>
+        <a href="pasta-kuchyn.php" class="quick-action-btn">🍝 Pasta kuchyň</a>
         <a href="bar.php" class="quick-action-btn">🍺 Bar</a>
-        <a href="data.php" class="quick-action-btn">📊 Statistiky</a>
+        <a href="serving.php" class="quick-action-btn">🍽️ Servírování</a>
+        <a href="billing.php" class="quick-action-btn">💰 Účtování</a>
+        <a href="orders_system.php" class="quick-action-btn">📋 Správa objednávek</a>
+        <a href="status_dashboard.php" class="quick-action-btn">📊 Status dashboard</a>
+        <a href="shifts_system.php" class="quick-action-btn">⏰ Směny</a>
         <a href="reservations.php" class="quick-action-btn">📅 Rezervace</a>
+        <a href="historie.php" class="quick-action-btn">📋 Historie</a>
+        <a href="data.php" class="quick-action-btn">📊 Statistiky</a>
+        <a href="admin.php" class="quick-action-btn">⚙️ Admin panel</a>
     </div>
 
     <!-- Pergoly container -->

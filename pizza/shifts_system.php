@@ -22,7 +22,7 @@ try {
 
 if (isset($_GET['logout'])) {
     session_destroy();
-    header("Location: /index.php");
+    header("Location: login.php");
     exit;
 }
 
