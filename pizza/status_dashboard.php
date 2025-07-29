@@ -954,7 +954,7 @@ $burrata_alert = $burrata_remaining <= $low_burrata_threshold;
     </div>
 
     <div style="margin-top: 20px; text-align: center;">
-        <a href="../index.html" class="back-btn">
+        <a href="/index.php" class="back-btn">
     ← Zpět
 </a>
 
