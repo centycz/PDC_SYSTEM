@@ -538,7 +538,7 @@ function canAccessTab($tab, $user_role) {
                     <input type="hidden" name="action" value="login">
                     <div class="form-group">
                         <label for="username">Uživatelské jméno:</label>
-                        <input type="text" id="username" name="username" required placeholder="např. centycz" value="<?= htmlspecialchars($_POST['username'] ?? '') ?>">
+                        <input type="text" id="username" name="username" required placeholder="např. Diego Maradona" value="<?= htmlspecialchars($_POST['username'] ?? '') ?>">
                     </div>
                     <div class="form-group">
                         <label for="password">Heslo:</label>
