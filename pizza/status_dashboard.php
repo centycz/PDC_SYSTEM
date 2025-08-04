@@ -52,14 +52,7 @@ if ($_POST['action'] ?? false) {
     try {
         $date = date('Y-m-d');
         
-        // ✅ SMAZAT dnešní objednávky
-        $stmt = $pdo->prepare("DELETE FROM orders WHERE DATE(created_at) = ?");
-        $stmt->execute([$date]);
-        
-        $stmt = $pdo->prepare("DELETE FROM burnt_pizzas_log WHERE DATE(burnt_at) = ?");
-        $stmt->execute([$date]);
-        
-        // Resetovat zásoby
+        // ✅ POUZE resetovat zásoby na nový den
         $stmt = $pdo->prepare("
             INSERT INTO daily_supplies (date, pizza_total, burrata_total, updated_by, updated_at) 
             VALUES (?, 120, 15, ?, NOW())
@@ -71,6 +64,10 @@ if ($_POST['action'] ?? false) {
         ");
         $stmt->execute([$date, $_SESSION['username'] ?? 'centycz']);
         
+        // ✅ Vymazat spálené pizzy z předchozího dne
+        $stmt = $pdo->prepare("DELETE FROM burnt_pizzas_log WHERE DATE(burnt_at) < ?");
+        $stmt->execute([$date]);
+        
         header("Location: status_dashboard.php?reset=success");
         exit;
     } catch(PDOException $e) {
@@ -78,7 +75,6 @@ if ($_POST['action'] ?? false) {
     }
 }
 }
-
 $date = date('Y-m-d');
 if (isset($_GET['reset']) && $_GET['reset'] === 'success') {
     $success_message = "🔄 Zásoby byly resetovány na nový den!";
@@ -253,8 +249,9 @@ try {
         FROM orders o 
         JOIN order_items oi ON o.id = oi.order_id 
         WHERE DATE(o.created_at) = ? 
-        AND oi.item_type = 'pizza'
-        AND oi.status IN ('pending', 'preparing', 'ready', 'delivered', 'paid')
+AND oi.item_type = 'pizza'
+AND oi.status IN ('pending', 'preparing', 'ready')
+        AND o.status != 'archived'
     ");
     $stmt->execute([$date]);
     $normal_pizzas = $stmt->fetch(PDO::FETCH_ASSOC)['normal_pizzas'] ?? 0;
@@ -288,8 +285,8 @@ try {
         FROM orders o 
         JOIN order_items oi ON o.id = oi.order_id 
         WHERE DATE(o.created_at) = ? 
-        AND (oi.item_name LIKE '%burrata%' OR oi.item_name LIKE '%Burrata%')
-        AND oi.status IN ('pending', 'preparing', 'ready', 'delivered', 'paid')
+AND (oi.item_name LIKE '%burrata%' OR oi.item_name LIKE '%Burrata%')
+AND oi.status IN ('pending', 'preparing', 'ready')
     ");
     $stmt->execute([$date]);
     $burrata_used = $stmt->fetch(PDO::FETCH_ASSOC)['burrata_used'] ?? 0;
