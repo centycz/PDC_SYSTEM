@@ -45,6 +45,42 @@ if ($_POST['action'] ?? false) {
         }
     }
     
+    if ($_POST['action'] === 'manual_reset') {
+        try {
+            $pizza_remaining = (int)$_POST['pizza_remaining'];
+            $burrata_remaining = (int)$_POST['burrata_remaining'];
+            $date = date('Y-m-d');
+            
+            // Vypočítáme kolik bylo použito na základě zbývajícího množství
+            $current_supplies = $pdo->prepare("SELECT pizza_total, burrata_total FROM daily_supplies WHERE date = ?");
+            $current_supplies->execute([$date]);
+            $current = $current_supplies->fetch(PDO::FETCH_ASSOC);
+            
+            if ($current) {
+                $new_pizza_total = $pizza_remaining + ($current['pizza_total'] - $pizza_remaining);
+                $new_burrata_total = $burrata_remaining + ($current['burrata_total'] - $burrata_remaining);
+            } else {
+                $new_pizza_total = $pizza_remaining;
+                $new_burrata_total = $burrata_remaining;
+            }
+            
+            $stmt = $pdo->prepare("
+                INSERT INTO daily_supplies (date, pizza_total, burrata_total, updated_by, updated_at) 
+                VALUES (?, ?, ?, ?, NOW())
+                ON DUPLICATE KEY UPDATE 
+                pizza_total = VALUES(pizza_total), 
+                burrata_total = VALUES(burrata_total),
+                updated_by = VALUES(updated_by),
+                updated_at = NOW()
+            ");
+            $stmt->execute([$date, $new_pizza_total, $new_burrata_total, $_SESSION['username'] ?? 'centycz']);
+            
+            $success_message = "Zásoby byly ručně nastaveny! Pizzy: {$pizza_remaining}ks, Burrata: {$burrata_remaining} porcí";
+        } catch(PDOException $e) {
+            $error_message = "Chyba při ručním nastavení: " . $e->getMessage();
+        }
+    }
+    
     // ✅ RESET DAY - PŘESUNUTÝ NAHORU!
     
 
@@ -243,14 +279,14 @@ if ($pizzy_count <= 5) {
 
 // ✅ NOVÁ LOGIKA POČÍTÁNÍ ZÁSOB - POUŽÍVÁ BURNT_PIZZAS_LOG
 try {
-    // Počítáme normální pizzy
+    // Počítáme normální pizzy (jen aktivně připravované, ne hotové)
     $stmt = $pdo->prepare("
         SELECT COALESCE(SUM(oi.quantity), 0) as normal_pizzas
         FROM orders o 
         JOIN order_items oi ON o.id = oi.order_id 
         WHERE DATE(o.created_at) = ? 
 AND oi.item_type = 'pizza'
-AND oi.status IN ('pending', 'preparing', 'ready')
+AND oi.status IN ('pending', 'preparing')
         AND o.status != 'archived'
     ");
     $stmt->execute([$date]);
@@ -279,19 +315,19 @@ $debug_info['pizza_calculation'] = "Objednané pizzy: {$normal_pizzas}, Dodateč
 // Burrata zůstává stejná
 // ✅ NOVÁ LOGIKA PRO BURRATU - stejně jako u pizzy
 try {
-    // Počítáme jen DODANÉ položky s burratou (ne spálené!)
+    // Počítáme jen OBJEDNANÉ položky s burratou (ne hotové!)
     $stmt = $pdo->prepare("
         SELECT COALESCE(SUM(oi.quantity), 0) as burrata_used
         FROM orders o 
         JOIN order_items oi ON o.id = oi.order_id 
         WHERE DATE(o.created_at) = ? 
 AND (oi.item_name LIKE '%burrata%' OR oi.item_name LIKE '%Burrata%')
-AND oi.status IN ('pending', 'preparing', 'ready')
+AND oi.status IN ('pending', 'preparing')
     ");
     $stmt->execute([$date]);
     $burrata_used = $stmt->fetch(PDO::FETCH_ASSOC)['burrata_used'] ?? 0;
     
-    $debug_info['burrata_calculation'] = "Dodané položky s burratou: {$burrata_used} (spálené se nepočítají - burrata se dává až na hotovou pizzu)";
+    $debug_info['burrata_calculation'] = "Objednané položky s burratou: {$burrata_used} (hotové se nepočítají - burrata se počítá jen při objednání)";
     
 } catch(PDOException $e) {
     $burrata_used = 0;
@@ -857,7 +893,7 @@ $burrata_alert = $burrata_remaining <= $low_burrata_threshold;
             <ul class="supplies-list">
                 <li class="supply-item">
                     <div class="supply-name">
-                        🍕 Pizzy <small>(zahrnuje spálené)</small>
+                        🍕 Pizzy <small>(jen připravované)</small>
                     </div>
                     <div style="display: flex; align-items: center; gap: 10px;">
                         <span class="supply-status <?= $pizza_percentage > 50 ? 'good' : ($pizza_percentage > 20 ? 'warning' : 'critical') ?>">
@@ -872,7 +908,7 @@ $burrata_alert = $burrata_remaining <= $low_burrata_threshold;
                 
                 <li class="supply-item">
                     <div class="supply-name">
-                        🧀 Burrata <small>(odečítáno při objednání)</small>
+                        🧀 Burrata <small>(jen připravované)</small>
                     </div>
                     <div style="display: flex; align-items: center; gap: 10px;">
                         <span class="supply-status <?= $burrata_percentage > 50 ? 'good' : ($burrata_percentage > 20 ? 'warning' : 'critical') ?>">
@@ -890,31 +926,66 @@ $burrata_alert = $burrata_remaining <= $low_burrata_threshold;
             <!-- Editační formulář -->
             <div class="edit-supplies" id="editSupplies">
                 <div class="edit-form" id="editForm">
-                    <form method="POST">
-                        <input type="hidden" name="action" value="update_supplies">
-                        
-                        <div class="form-row">
-                            <label>🍕 Pizzy:</label>
-                            <input type="number" name="pizza_total" value="<?= $pizza_total ?>" min="0" max="500" required>
-                            <span style="font-size: 0.8rem; color: #666;">celkem na den</span>
-                        </div>
-                        
-                        <div class="form-row">
-                            <label>🧀 Burrata:</label>
-                            <input type="number" name="burrata_total" value="<?= $burrata_total ?>" min="0" max="100" required>
-                            <span style="font-size: 0.8rem; color: #666;">porcí na den</span>
-                        </div>
-                        
-                        <div class="btn-group">
-                            <button type="submit" class="btn btn-primary">💾 Uložit</button>
-                            <button type="button" class="btn btn-secondary" onclick="cancelEdit()">❌ Zrušit</button>
-                        </div>
-                    </form>
+                    <!-- Standardní úprava celkových zásob -->
+                    <div id="editTotalForm">
+                        <h4 style="margin-bottom: 10px; color: #333;">📦 Upravit celkové denní zásoby</h4>
+                        <form method="POST">
+                            <input type="hidden" name="action" value="update_supplies">
+                            
+                            <div class="form-row">
+                                <label>🍕 Pizzy:</label>
+                                <input type="number" name="pizza_total" value="<?= $pizza_total ?>" min="0" max="500" required>
+                                <span style="font-size: 0.8rem; color: #666;">celkem na den</span>
+                            </div>
+                            
+                            <div class="form-row">
+                                <label>🧀 Burrata:</label>
+                                <input type="number" name="burrata_total" value="<?= $burrata_total ?>" min="0" max="100" required>
+                                <span style="font-size: 0.8rem; color: #666;">porcí na den</span>
+                            </div>
+                            
+                            <div class="btn-group">
+                                <button type="submit" class="btn btn-primary">💾 Uložit celkové</button>
+                                <button type="button" class="btn btn-secondary" onclick="toggleManualForm()">🎯 Ruční nastavení</button>
+                                <button type="button" class="btn btn-secondary" onclick="cancelEdit()">❌ Zrušit</button>
+                            </div>
+                        </form>
+                    </div>
+                    
+                    <!-- Ruční nastavení zbývajících zásob -->
+                    <div id="manualForm" style="display: none;">
+                        <h4 style="margin-bottom: 10px; color: #333;">🎯 Nastavit zbývající zásoby</h4>
+                        <p style="font-size: 0.9rem; color: #666; margin-bottom: 15px;">
+                            Zadejte kolik momentálně zbývá (např. 40ks když zbývalo 40ks)
+                        </p>
+                        <form method="POST">
+                            <input type="hidden" name="action" value="manual_reset">
+                            
+                            <div class="form-row">
+                                <label>🍕 Zbývá pizz:</label>
+                                <input type="number" name="pizza_remaining" value="<?= $pizza_remaining ?>" min="0" max="500" required>
+                                <span style="font-size: 0.8rem; color: #666;">kusů aktuálně</span>
+                            </div>
+                            
+                            <div class="form-row">
+                                <label>🧀 Zbývá burraty:</label>
+                                <input type="number" name="burrata_remaining" value="<?= $burrata_remaining ?>" min="0" max="100" required>
+                                <span style="font-size: 0.8rem; color: #666;">porcí aktuálně</span>
+                            </div>
+                            
+                            <div class="btn-group">
+                                <button type="submit" class="btn btn-primary">🎯 Nastavit zbývající</button>
+                                <button type="button" class="btn btn-secondary" onclick="toggleManualForm()">📦 Celkové zásoby</button>
+                                <button type="button" class="btn btn-secondary" onclick="cancelEdit()">❌ Zrušit</button>
+                            </div>
+                        </form>
+                    </div>
                 </div>
                 
                 <div id="editHint">
                     <p style="text-align: center; color: #666; font-size: 0.9rem;">
-                        💡 Klikněte na "Upravit" pro změnu denních zásob
+                        💡 Klikněte na "Upravit" pro změnu denních zásob<br>
+                        <small>Nebo použijte "🎯 Ruční nastavení" pro přesné zbývající množství</small>
                     </p>
                 </div>
             </div>
@@ -961,7 +1032,7 @@ $burrata_alert = $burrata_remaining <= $low_burrata_threshold;
         let countdownTimer = 15;
         
       function resetDay() {
-     if (confirm('🔄 NOVÝ DEN\n\nTohle SMAŽE všechny dnešní objednávky a resetuje zásoby:\n🍕 Pizzy: 120 ks\n🧀 Burrata: 15 ks\n\n⚠️ POZOR: Ztratíš dnešní statistiky!\n\nOpravdu pokračovat?')) {
+     if (confirm('🔄 NOVÝ DEN - RESET ZÁSOB\n\n✅ CO SE RESETUJE:\n🍕 Zásoby pizz: → 120 ks\n🧀 Zásoby burraty: → 15 ks\n🔥 Smazání starých spálených pizz\n\n✅ CO SE ZACHOVÁ:\n📋 Všechny objednávky a účty stolů\n📊 Statistiky a historie\n👥 Aktivní session stolů\n💰 Nevyúčtované účty\n\n⚠️ Toto je BEZPEČNÝ reset - mažou se jen zásoby!\n\nPokračovat?')) {
         // ✅ ZASTAVIT AUTO-REFRESH
         clearInterval(refreshInterval);
         
@@ -1000,14 +1071,33 @@ $burrata_alert = $burrata_remaining <= $low_burrata_threshold;
             editHint.style.display = editForm.classList.contains('active') ? 'none' : 'block';
         }
         
+        function toggleManualForm() {
+            const totalForm = document.getElementById('editTotalForm');
+            const manualForm = document.getElementById('manualForm');
+            
+            if (totalForm.style.display === 'none') {
+                totalForm.style.display = 'block';
+                manualForm.style.display = 'none';
+            } else {
+                totalForm.style.display = 'none';
+                manualForm.style.display = 'block';
+            }
+        }
+        
         function cancelEdit() {
             const editSupplies = document.getElementById('editSupplies');
             const editForm = document.getElementById('editForm');
             const editHint = document.getElementById('editHint');
+            const totalForm = document.getElementById('editTotalForm');
+            const manualForm = document.getElementById('manualForm');
             
             editSupplies.classList.remove('editing');
             editForm.classList.remove('active');
             editHint.style.display = 'block';
+            
+            // Reset to total form when canceling
+            totalForm.style.display = 'block';
+            manualForm.style.display = 'none';
         }
         
         // Spustit countdown timer
