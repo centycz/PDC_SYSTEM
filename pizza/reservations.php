@@ -489,6 +489,15 @@ $user_role = $_SESSION['user_role'];
         <!-- Přehled stolů -->
         <div id="tables-overview" class="content">
             <h2>Přehled stolů</h2>
+            
+            <div class="filters">
+                <div>
+                    <label>Datum:</label>
+                    <input type="date" id="tables-filter-date">
+                </div>
+                <button class="btn" onclick="loadTablesWithReservations()">🔍 Filtrovat</button>
+            </div>
+            
             <div id="tables-container" class="table-grid">
                 <!-- Stoly se načtou zde -->
             </div>
@@ -594,6 +603,10 @@ $user_role = $_SESSION['user_role'];
             // Načti rezervace pro dnešní datum
             document.getElementById('filter-date').value = new Date().toISOString().split('T')[0];
             loadReservations();
+            
+            // Nastav defaultní datum pro přehled stolů
+            document.getElementById('tables-filter-date').value = new Date().toISOString().split('T')[0];
+            loadTablesWithReservations();
         }
 
         function setDefaultDate() {
@@ -930,7 +943,7 @@ $user_role = $_SESSION['user_role'];
         }
 
         async function loadTablesWithReservations() {
-            const date = document.getElementById('filter-date').value || new Date().toISOString().split('T')[0];
+            const date = document.getElementById('tables-filter-date').value || new Date().toISOString().split('T')[0];
             
             try {
                 const response = await fetch(`api/restaurant-api.php?action=tables-with-reservations&date=${date}`);
@@ -953,9 +966,10 @@ $user_role = $_SESSION['user_role'];
                 
                 if (table.reservations && table.reservations.length > 0) {
                     cardClass += ' reserved';
-                    reservationInfo = table.reservations.map(res => 
-                        `<div>${res.reservation_time} - ${res.customer_name}</div>`
-                    ).join('');
+                    reservationInfo = table.reservations.map(res => {
+                        const partyText = res.party_size > 1 ? `${res.party_size} osob` : '1 osoba';
+                        return `<div>${res.reservation_time} - ${res.customer_name} (${partyText})</div>`;
+                    }).join('');
                 }
                 
                 if (table.status === 'occupied') {
