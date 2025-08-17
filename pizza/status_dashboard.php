@@ -1047,11 +1047,7 @@ $burrata_alert = $burrata_remaining <= $low_burrata_threshold;
         </div>
         
         <div class="stats-grid">
-            <div class="stat-item">
-                <div class="stat-number" id="daily-revenue"><?= $daily_revenue ?></div>
-                <div class="stat-label">💰 Tržby (Kč)</div>
-            </div>
-            
+                      
             <div class="stat-item">
                 <div class="stat-number" id="daily-orders"><?= $daily_orders ?></div>
                 <div class="stat-label">📋 Objednávky</div>
