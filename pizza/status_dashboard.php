@@ -93,7 +93,11 @@ if ($_POST['action'] ?? false) {
     try {
         $date = date('Y-m-d');
         
-        // ✅ POUZE resetovat zásoby na nový den
+        // ✅ Vymazat spálené pizzy z předchozího dne NEJPRVE
+        $stmt = $pdo->prepare("DELETE FROM burnt_pizzas_log WHERE DATE(burnt_at) < ?");
+        $stmt->execute([$date]);
+        
+        // ✅ POTÉ resetovat zásoby na nový den
         $stmt = $pdo->prepare("
             INSERT INTO daily_supplies (date, pizza_total, burrata_total, updated_by, updated_at) 
             VALUES (?, 120, 15, ?, NOW())
@@ -104,10 +108,6 @@ if ($_POST['action'] ?? false) {
             updated_at = NOW()
         ");
         $stmt->execute([$date, $_SESSION['username'] ?? 'centycz']);
-        
-        // ✅ Vymazat spálené pizzy z předchozího dne
-        $stmt = $pdo->prepare("DELETE FROM burnt_pizzas_log WHERE DATE(burnt_at) < ?");
-        $stmt->execute([$date]);
         
         header("Location: status_dashboard.php?reset=success");
         exit;
