@@ -441,6 +441,33 @@ try {
     $stmt->execute([$date]);
     $total_people_today = $stmt->fetch(PDO::FETCH_ASSOC)['total_people_today'] ?? 0;
     
+    // NOVÁ FUNKCIONALITA: Rezervace pro následující 30-minutový slot
+    // Vypočítáme následující 30-minutový slot od aktuálního času
+    $current_minutes = (int)date('i');
+    $current_hour = (int)date('H');
+    
+    // Určíme následující 30-minutový slot
+    if ($current_minutes < 30) {
+        $next_slot_time = sprintf('%02d:30:00', $current_hour);
+    } else {
+        $next_slot_time = sprintf('%02d:00:00', $current_hour + 1);
+    }
+    
+    // Získáme rezervace pro následující 30-minutový slot
+    $stmt = $pdo->prepare("
+        SELECT COUNT(*) as next_slot_reservations,
+               COALESCE(SUM(party_size), 0) as next_slot_people
+        FROM reservations 
+        WHERE reservation_date = ? 
+        AND reservation_time = ? 
+        AND status != 'cancelled'
+    ");
+    $stmt->execute([$date, $next_slot_time]);
+    $next_slot_data = $stmt->fetch(PDO::FETCH_ASSOC);
+    $next_slot_reservations = $next_slot_data['next_slot_reservations'] ?? 0;
+    $next_slot_people = $next_slot_data['next_slot_people'] ?? 0;
+    $next_slot_display = date('H:i', strtotime($next_slot_time));
+    
 } catch(PDOException $e) {
     $total_reservations = 0;
     $past_reservations = 0;
@@ -448,6 +475,9 @@ try {
     $next_reservation = null;
     $total_upcoming_people = 0;
     $total_people_today = 0;
+    $next_slot_reservations = 0;
+    $next_slot_people = 0;
+    $next_slot_display = '--:--';
     $debug_info['reservation_error'] = $e->getMessage();
 }
 
@@ -1129,10 +1159,26 @@ $burrata_alert = $burrata_remaining <= $low_burrata_threshold;
             </div>
             
             <div class="stat-item">
+                <div class="stat-number" id="next-slot-people"><?= $next_slot_people ?></div>
+                <div class="stat-label">🕐 Lidí za 30min</div>
+                <div style="font-size: 0.75em; color: rgba(255,255,255,0.8); margin-top: 3px;">
+                    Slot <?= $next_slot_display ?>
+                </div>
+            </div>
+            
+            <div class="stat-item">
+                <div class="stat-number" id="next-slot-reservations"><?= $next_slot_reservations ?></div>
+                <div class="stat-label">📋 Rezervací za 30min</div>
+                <div style="font-size: 0.75em; color: rgba(255,255,255,0.8); margin-top: 3px;">
+                    Slot <?= $next_slot_display ?>
+                </div>
+            </div>
+            
+            <div class="stat-item">
                 <?php if ($next_reservation): ?>
                     <div class="stat-number" style="font-size: 1.2em;"><?= date('H:i', strtotime($next_reservation['reservation_time'])) ?></div>
                     <div class="stat-label">⏭️ Nejbližší</div>
-                    <div style="font-size: 0.8em; color: #666; margin-top: 5px;">
+                    <div style="font-size: 0.8em; color: rgba(255,255,255,0.9); margin-top: 5px;">
                         <?= htmlspecialchars($next_reservation['customer_name']) ?> (<?= $next_reservation['party_size'] ?> osob)
                         <?php if ($next_reservation['table_number']): ?>
                             <br>Stůl <?= $next_reservation['table_number'] ?>
@@ -1141,7 +1187,7 @@ $burrata_alert = $burrata_remaining <= $low_burrata_threshold;
                 <?php else: ?>
                     <div class="stat-number">--:--</div>
                     <div class="stat-label">⏭️ Nejbližší</div>
-                    <div style="font-size: 0.8em; color: #666; margin-top: 5px;">Žádné další rezervace</div>
+                    <div style="font-size: 0.8em; color: rgba(255,255,255,0.9); margin-top: 5px;">Žádné další rezervace</div>
                 <?php endif; ?>
             </div>
         </div>
