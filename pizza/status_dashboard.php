@@ -1,6 +1,11 @@
 <?php
 session_start();
 
+// Prevent caching and Firefox dialog on refresh after POST
+header('Cache-Control: no-cache, no-store, must-revalidate');
+header('Pragma: no-cache');
+header('Expires: 0');
+
 // Check if user is logged in
 if (!isset($_SESSION['order_user'])) {
     header('Location: /index.php');
@@ -415,11 +420,34 @@ try {
     $stmt->execute([$date, $current_time]);
     $next_reservation = $stmt->fetch(PDO::FETCH_ASSOC);
     
+    // Celkový počet osob z nadcházejících rezervací
+    $stmt = $pdo->prepare("
+        SELECT COALESCE(SUM(party_size), 0) as total_upcoming_people
+        FROM reservations 
+        WHERE reservation_date = ? 
+        AND reservation_time >= ? 
+        AND status != 'cancelled'
+    ");
+    $stmt->execute([$date, $current_time]);
+    $total_upcoming_people = $stmt->fetch(PDO::FETCH_ASSOC)['total_upcoming_people'] ?? 0;
+    
+    // Počet osob ze všech rezervací dnes (včetně proběhlých)
+    $stmt = $pdo->prepare("
+        SELECT COALESCE(SUM(party_size), 0) as total_people_today
+        FROM reservations 
+        WHERE reservation_date = ? 
+        AND status != 'cancelled'
+    ");
+    $stmt->execute([$date]);
+    $total_people_today = $stmt->fetch(PDO::FETCH_ASSOC)['total_people_today'] ?? 0;
+    
 } catch(PDOException $e) {
     $total_reservations = 0;
     $past_reservations = 0;
     $upcoming_reservations = 0;
     $next_reservation = null;
+    $total_upcoming_people = 0;
+    $total_people_today = 0;
     $debug_info['reservation_error'] = $e->getMessage();
 }
 
@@ -434,6 +462,9 @@ $burrata_alert = $burrata_remaining <= $low_burrata_threshold;
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta http-equiv="Cache-Control" content="no-cache, no-store, must-revalidate">
+    <meta http-equiv="Pragma" content="no-cache">
+    <meta http-equiv="Expires" content="0">
     <title>Status Dashboard - Pizza dal Cortile</title>
     <style>
         * {
@@ -1085,6 +1116,16 @@ $burrata_alert = $burrata_remaining <= $low_burrata_threshold;
             <div class="stat-item">
                 <div class="stat-number" id="upcoming-reservations"><?= $upcoming_reservations ?></div>
                 <div class="stat-label">⏰ Nadcházející</div>
+            </div>
+            
+            <div class="stat-item">
+                <div class="stat-number" id="total-upcoming-people"><?= $total_upcoming_people ?></div>
+                <div class="stat-label">👥 Lidí čeká</div>
+            </div>
+            
+            <div class="stat-item">
+                <div class="stat-number" id="total-people-today"><?= $total_people_today ?></div>
+                <div class="stat-label">👥 Lidí celkem dnes</div>
             </div>
             
             <div class="stat-item">
