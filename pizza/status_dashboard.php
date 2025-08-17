@@ -279,7 +279,7 @@ if ($pizzy_count <= 5) {
 
 // ✅ NOVÁ LOGIKA POČÍTÁNÍ ZÁSOB - POUŽÍVÁ BURNT_PIZZAS_LOG
 try {
-    // Počítáme normální pizzy (jen aktivně připravované, ne hotové)
+    // Počítáme normální pizzy (jen aktivně připravované, ne hotové a NE spálené)
     $stmt = $pdo->prepare("
         SELECT COALESCE(SUM(oi.quantity), 0) as normal_pizzas
         FROM orders o 
@@ -287,6 +287,7 @@ try {
         WHERE DATE(o.created_at) = ? 
 AND oi.item_type = 'pizza'
 AND oi.status IN ('pending', 'preparing')
+AND (oi.note IS NULL OR oi.note != 'Spalena')
         AND o.status != 'archived'
     ");
     $stmt->execute([$date]);
@@ -304,7 +305,7 @@ AND oi.status IN ('pending', 'preparing')
     // ✅ VÝPOČET: normální pizzy + 2x spálené (protože spálená = nové těsto)
     $pizza_used = $normal_pizzas + $burned_pizzas;
 
-$debug_info['pizza_calculation'] = "Objednané pizzy: {$normal_pizzas}, Dodatečně spálené: {$burned_pizzas}, Celková spotřeba těsta: {$pizza_used}";
+$debug_info['pizza_calculation'] = "Normální pizzy (bez spálených): {$normal_pizzas}, Spálené pizzy: {$burned_pizzas}, Celková spotřeba těsta: {$pizza_used}";
     
 } catch(PDOException $e) {
     $pizza_used = 0;
@@ -373,6 +374,53 @@ try {
     $daily_revenue = "0";
     $avg_order = "0";
     $peak_time = "--:--";
+}
+
+// Načtení rezervací pro dnešní den
+try {
+    // Celkový počet rezervací za den
+    $stmt = $pdo->prepare("
+        SELECT COUNT(*) as total_reservations
+        FROM reservations 
+        WHERE reservation_date = ? AND status != 'cancelled'
+    ");
+    $stmt->execute([$date]);
+    $total_reservations = $stmt->fetch(PDO::FETCH_ASSOC)['total_reservations'] ?? 0;
+    
+    // Rezervace, které již proběhly (čas rezervace < aktuální čas)
+    $current_time = date('H:i:s');
+    $stmt = $pdo->prepare("
+        SELECT COUNT(*) as past_reservations
+        FROM reservations 
+        WHERE reservation_date = ? 
+        AND reservation_time < ? 
+        AND status != 'cancelled'
+    ");
+    $stmt->execute([$date, $current_time]);
+    $past_reservations = $stmt->fetch(PDO::FETCH_ASSOC)['past_reservations'] ?? 0;
+    
+    // Rezervace, které mají ještě dojít
+    $upcoming_reservations = $total_reservations - $past_reservations;
+    
+    // Nejbližší rezervace
+    $stmt = $pdo->prepare("
+        SELECT customer_name, reservation_time, party_size, table_number 
+        FROM reservations 
+        WHERE reservation_date = ? 
+        AND reservation_time >= ? 
+        AND status != 'cancelled'
+        ORDER BY reservation_time 
+        LIMIT 1
+    ");
+    $stmt->execute([$date, $current_time]);
+    $next_reservation = $stmt->fetch(PDO::FETCH_ASSOC);
+    
+} catch(PDOException $e) {
+    $total_reservations = 0;
+    $past_reservations = 0;
+    $upcoming_reservations = 0;
+    $next_reservation = null;
+    $debug_info['reservation_error'] = $e->getMessage();
 }
 
 $low_pizza_threshold = $pizza_total * 0.2;
@@ -849,7 +897,7 @@ $burrata_alert = $burrata_remaining <= $low_burrata_threshold;
             
             <?php if (isset($burned_pizzas) && $burned_pizzas > 0): ?>
             <div class="burned-note">
-                🔥 <strong>Spálené pizzy dnes:</strong> <?= $burned_pizzas ?> pizz (spotřeba <?= $burned_pizzas * 2 ?> kusů těsta)
+                🔥 <strong>Spálené pizzy dnes:</strong> <?= $burned_pizzas ?> pizz (spotřeba <?= $burned_pizzas ?> kusů těsta)
             </div>
             <?php endif; ?>
             
@@ -1017,6 +1065,47 @@ $burrata_alert = $burrata_remaining <= $low_burrata_threshold;
             <div class="stat-item">
                 <div class="stat-number" id="peak-time"><?= $peak_time ?></div>
                 <div class="stat-label">⚡ Špička</div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Rezervace panel -->
+    <div class="stats-panel">
+        <div class="panel-title">
+            📅 Rezervace na dnes
+        </div>
+        
+        <div class="stats-grid">
+            <div class="stat-item">
+                <div class="stat-number" id="total-reservations"><?= $total_reservations ?></div>
+                <div class="stat-label">📋 Celkem rezervací</div>
+            </div>
+            
+            <div class="stat-item">
+                <div class="stat-number" id="past-reservations"><?= $past_reservations ?></div>
+                <div class="stat-label">✅ Již proběhly</div>
+            </div>
+            
+            <div class="stat-item">
+                <div class="stat-number" id="upcoming-reservations"><?= $upcoming_reservations ?></div>
+                <div class="stat-label">⏰ Nadcházející</div>
+            </div>
+            
+            <div class="stat-item">
+                <?php if ($next_reservation): ?>
+                    <div class="stat-number" style="font-size: 1.2em;"><?= date('H:i', strtotime($next_reservation['reservation_time'])) ?></div>
+                    <div class="stat-label">⏭️ Nejbližší</div>
+                    <div style="font-size: 0.8em; color: #666; margin-top: 5px;">
+                        <?= htmlspecialchars($next_reservation['customer_name']) ?> (<?= $next_reservation['party_size'] ?> osob)
+                        <?php if ($next_reservation['table_number']): ?>
+                            <br>Stůl <?= $next_reservation['table_number'] ?>
+                        <?php endif; ?>
+                    </div>
+                <?php else: ?>
+                    <div class="stat-number">--:--</div>
+                    <div class="stat-label">⏭️ Nejbližší</div>
+                    <div style="font-size: 0.8em; color: #666; margin-top: 5px;">Žádné další rezervace</div>
+                <?php endif; ?>
             </div>
         </div>
     </div>
