@@ -273,13 +273,19 @@ $predkrmy_count = $appetizerCount;
 $dezerty_count = $dessertCount;
 
 if ($pizzy_count <= 5) {
-    $waiting_time = 15;
+    $waiting_time = 10;
 } elseif ($pizzy_count <= 10) {
-    $waiting_time = 25;
+    $waiting_time = 15;
 } elseif ($pizzy_count <= 15) {
-    $waiting_time = 35;
+    $waiting_time = 20;
+} elseif ($pizzy_count <= 20) {
+    $waiting_time = 30;
+} elseif ($pizzy_count <= 25) {
+    $waiting_time = 40;
+} elseif ($pizzy_count <= 30) {
+    $waiting_time = 50;
 } else {
-    $waiting_time = 45;
+    $waiting_time = 60;
 }
 
 // ✅ NOVÁ LOGIKA POČÍTÁNÍ ZÁSOB - POUŽÍVÁ BURNT_PIZZAS_LOG
@@ -408,17 +414,38 @@ try {
     $upcoming_reservations = $total_reservations - $past_reservations;
     
     // Nejbližší rezervace
+  // Najít nejbližší časový slot s rezervacemi
+$stmt = $pdo->prepare("
+    SELECT DISTINCT reservation_time 
+    FROM reservations 
+    WHERE reservation_date = ? 
+    AND reservation_time >= ? 
+    AND status != 'cancelled'
+    ORDER BY reservation_time 
+    LIMIT 1
+");
+$stmt->execute([$date, $current_time]);
+$next_time_slot = $stmt->fetchColumn();
+
+// Všechny rezervace pro tento nejbližší čas (např. všechny pro 16:00)
+$next_reservations = [];
+$next_slot_people_count = 0;
+
+if ($next_time_slot) {
     $stmt = $pdo->prepare("
         SELECT customer_name, reservation_time, party_size, table_number 
         FROM reservations 
         WHERE reservation_date = ? 
-        AND reservation_time >= ? 
+        AND reservation_time = ?
         AND status != 'cancelled'
-        ORDER BY reservation_time 
-        LIMIT 1
+        ORDER BY table_number
     ");
-    $stmt->execute([$date, $current_time]);
-    $next_reservation = $stmt->fetch(PDO::FETCH_ASSOC);
+    $stmt->execute([$date, $next_time_slot]);
+    $next_reservations = $stmt->fetchAll(PDO::FETCH_ASSOC);
+    
+    // Počet osob pro tento nejbližší časový slot
+    $next_slot_people_count = array_sum(array_column($next_reservations, 'party_size'));
+}
     
     // Celkový počet osob z nadcházejících rezervací
     $stmt = $pdo->prepare("
@@ -1137,7 +1164,10 @@ $burrata_alert = $burrata_remaining <= $low_burrata_threshold;
                 <div class="stat-number" id="total-reservations"><?= $total_reservations ?></div>
                 <div class="stat-label">📋 Celkem rezervací</div>
             </div>
-            
+              <div class="stat-item">
+                <div class="stat-number" id="total-people-today"><?= $total_people_today ?></div>
+                <div class="stat-label">👥 Lidí celkem dnes</div>
+            </div>
             <div class="stat-item">
                 <div class="stat-number" id="past-reservations"><?= $past_reservations ?></div>
                 <div class="stat-label">✅ Již proběhly</div>
@@ -1153,10 +1183,7 @@ $burrata_alert = $burrata_remaining <= $low_burrata_threshold;
                 <div class="stat-label">👥 Lidí čeká</div>
             </div>
             
-            <div class="stat-item">
-                <div class="stat-number" id="total-people-today"><?= $total_people_today ?></div>
-                <div class="stat-label">👥 Lidí celkem dnes</div>
-            </div>
+          
             
             <div class="stat-item">
                 <div class="stat-number" id="next-slot-people"><?= $next_slot_people ?></div>
@@ -1165,31 +1192,30 @@ $burrata_alert = $burrata_remaining <= $low_burrata_threshold;
                     Slot <?= $next_slot_display ?>
                 </div>
             </div>
-            
+                                 
             <div class="stat-item">
-                <div class="stat-number" id="next-slot-reservations"><?= $next_slot_reservations ?></div>
-                <div class="stat-label">📋 Rezervací za 30min</div>
-                <div style="font-size: 0.75em; color: rgba(255,255,255,0.8); margin-top: 3px;">
-                    Slot <?= $next_slot_display ?>
-                </div>
-            </div>
-            
-            <div class="stat-item">
-                <?php if ($next_reservation): ?>
-                    <div class="stat-number" style="font-size: 1.2em;"><?= date('H:i', strtotime($next_reservation['reservation_time'])) ?></div>
-                    <div class="stat-label">⏭️ Nejbližší</div>
-                    <div style="font-size: 0.8em; color: rgba(255,255,255,0.9); margin-top: 5px;">
-                        <?= htmlspecialchars($next_reservation['customer_name']) ?> (<?= $next_reservation['party_size'] ?> osob)
-                        <?php if ($next_reservation['table_number']): ?>
-                            <br>Stůl <?= $next_reservation['table_number'] ?>
-                        <?php endif; ?>
-                    </div>
-                <?php else: ?>
-                    <div class="stat-number">--:--</div>
-                    <div class="stat-label">⏭️ Nejbližší</div>
-                    <div style="font-size: 0.8em; color: rgba(255,255,255,0.9); margin-top: 5px;">Žádné další rezervace</div>
+    <?php if (!empty($next_reservations)): ?>
+        <div class="stat-number" style="font-size: 1.2em;"><?= date('H:i', strtotime($next_time_slot)) ?></div>
+        <div class="stat-label">⏭️ Nejbližší čas</div>
+        <div style="font-size: 0.8em; color: rgba(255,255,255,0.9); margin-top: 5px;">
+            <?= count($next_reservations) ?> rezervací (<?= $next_slot_people_count ?> osob)
+            <br>
+            <?php foreach ($next_reservations as $index => $reservation): ?>
+                <?= htmlspecialchars($reservation['customer_name']) ?> (<?= $reservation['party_size'] ?>)
+                <?php if ($reservation['table_number']): ?>
+                    - Stůl <?= $reservation['table_number'] ?>
                 <?php endif; ?>
-            </div>
+                <?php if ($index < count($next_reservations) - 1): ?>
+                    <br>
+                <?php endif; ?>
+            <?php endforeach; ?>
+        </div>
+    <?php else: ?>
+        <div class="stat-number">--:--</div>
+        <div class="stat-label">⏭️ Nejbližší čas</div>
+        <div style="font-size: 0.8em; color: rgba(255,255,255,0.9); margin-top: 5px;">Žádné další rezervace</div>
+    <?php endif; ?>
+</div>
         </div>
     </div>
 
