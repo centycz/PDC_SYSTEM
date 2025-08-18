@@ -664,14 +664,17 @@
         let cart = [];
         let orders = [];
 
-        // Funkce pro vymazání košíku (centralizovaná)
+        // Funkce pro vymazání košíku (centralizovaná s lepším loggingem)
         function clearCart() {
-            console.log('clearCart() called, current cart length:', cart.length);
+            console.log('🧹 clearCart() called - current cart length:', cart.length);
+            console.log('🧹 Cart contents before clear:', cart.map(item => `${item.name} (${item.qty}x)`));
+            
             cart = [];
             document.getElementById('customerName').value = '';
             document.getElementById('isReserved').checked = false;
             renderCart();
-            console.log('Cart cleared, new cart length:', cart.length);
+            
+            console.log('✅ Cart cleared successfully - new cart length:', cart.length);
         }
 
         // Utility funkce
@@ -999,10 +1002,12 @@ function getTableCountText(count) {
             if (!cart.length || !selectedTable) return;
             
             console.log('=== SUBMIT ORDER START ===');
+            console.log('Cart items before submission:', cart.length);
             
             const customerName = document.getElementById('customerName').value;
             const isReserved = document.getElementById('isReserved').checked;
             const items = [];
+            let orderWasCreated = false; // 🔑 Track if order was successfully created
             
             // Příprava položek pro databázi
             cart.forEach(item => {
@@ -1067,14 +1072,17 @@ function getTableCountText(count) {
                 
                 console.log('Parsed response:', orderResponse);
                 
-                // ✅ OPRAVENÁ LOGIKA - kontroluj order_id místo success flag
+                // ✅ ZJEDNODUŠENÁ LOGIKA - pokud dostaneme order_id, košík se MUSÍ vymazat
                 const orderId = orderResponse.data?.order_id;
                 
                 if (orderId) {
-                    // ✅ Objednávka byla úspěšně vytvořena - vymaž košík
-                    console.log('Order created with ID:', orderId, ', clearing cart...');
+                    // 🔑 Označit že objednávka byla vytvořena
+                    orderWasCreated = true;
+                    
+                    // ✅ OKAMŽITÉ VYMAZÁNÍ KOŠÍKU - bez dalších podmínek
+                    console.log('✅ ORDER_ID RECEIVED:', orderId, '- CLEARING CART IMMEDIATELY');
                     clearCart();
-                    console.log('Cart cleared, current cart length:', cart.length);
+                    console.log('✅ CART CLEARED - Current length:', cart.length);
                     
                     if (orderResponse.success) {
                         showMsg('✅ Objednávka byla úspěšně odeslána!');
@@ -1123,23 +1131,29 @@ function getTableCountText(count) {
                     
                 } else {
                     // ❌ Objednávka nebyla vytvořena - pravá chyba
-                    console.error('Order creation failed:', orderResponse.error);
+                    console.error('❌ ORDER CREATION FAILED - No order_id received:', orderResponse.error);
                     showMsg(orderResponse.error || 'Chyba při vytváření objednávky - zkuste to znovu', false);
                 }
             } catch (error) {
-                console.error('Submit error:', error);
-                // Restore cart from backup ONLY if order wasn't created (no order_id)
-                // Don't restore on network/parsing errors if order might have been created
-                if (cartBackup.length > 0) {
+                console.error('❌ SUBMIT ERROR:', error);
+                
+                // 🔑 ZJEDNODUŠENÁ LOGIKA - restore cart POUZE pokud objednávka NEBYLA vytvořena
+                if (!orderWasCreated && cartBackup.length > 0) {
                     cart = [...cartBackup];
                     renderCart();
-                    console.log('Cart restored from backup due to error, length:', cart.length);
+                    console.log('Cart restored from backup - order was NOT created, length:', cart.length);
+                } else if (orderWasCreated) {
+                    console.log('Cart NOT restored - order WAS created successfully');
+                } else {
+                    console.log('Cart NOT restored - no backup available');
                 }
+                
                 showMsg('Chyba při odesílání: ' + error.message + ' - zkuste to znovu', false);
             } finally {
                 submitBtn.disabled = false;
                 submitBtn.textContent = originalText;
                 console.log('=== SUBMIT ORDER END ===');
+                console.log('Final cart length:', cart.length);
             }
         }
 
