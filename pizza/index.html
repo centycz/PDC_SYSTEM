@@ -1067,16 +1067,21 @@ function getTableCountText(count) {
                 
                 console.log('Parsed response:', orderResponse);
                 
-                if (orderResponse.success) {
-                    // ✅ Košík vymazat POUZE při úspěšném odeslání
-                    console.log('Order successful, clearing cart...');
+                // ✅ OPRAVENÁ LOGIKA - kontroluj order_id místo success flag
+                const orderId = orderResponse.data?.order_id;
+                
+                if (orderId) {
+                    // ✅ Objednávka byla úspěšně vytvořena - vymaž košík
+                    console.log('Order created with ID:', orderId, ', clearing cart...');
                     clearCart();
                     console.log('Cart cleared, current cart length:', cart.length);
                     
-                    const orderId = orderResponse.data.order_id;
-                    console.log('✅ Order created with ID:', orderId);
-                    
-                    showMsg('✅ Objednávka byla úspěšně odeslána!');
+                    if (orderResponse.success) {
+                        showMsg('✅ Objednávka byla úspěšně odeslána!');
+                    } else {
+                        showMsg('✅ Objednávka byla uložena, ale nastala chyba: ' + (orderResponse.error || 'Neznámá chyba'));
+                        console.warn('Order saved but with secondary error:', orderResponse.error);
+                    }
                     
                     const kitchenItems = items.filter(item => 
                         ['pizza', 'pasta', 'predkrm', 'dezert'].includes(item.type)
@@ -1117,18 +1122,20 @@ function getTableCountText(count) {
                     refreshTables();
                     
                 } else {
-                    console.error('API Error:', orderResponse.error);
-                    showMsg(orderResponse.error || 'Chyba při odesílání objednávky', false);
+                    // ❌ Objednávka nebyla vytvořena - pravá chyba
+                    console.error('Order creation failed:', orderResponse.error);
+                    showMsg(orderResponse.error || 'Chyba při vytváření objednávky - zkuste to znovu', false);
                 }
             } catch (error) {
                 console.error('Submit error:', error);
-                // Restore cart from backup on network/parsing errors to prevent data loss
+                // Restore cart from backup ONLY if order wasn't created (no order_id)
+                // Don't restore on network/parsing errors if order might have been created
                 if (cartBackup.length > 0) {
                     cart = [...cartBackup];
                     renderCart();
                     console.log('Cart restored from backup due to error, length:', cart.length);
                 }
-                showMsg('Chyba při odesílání: ' + error.message, false);
+                showMsg('Chyba při odesílání: ' + error.message + ' - zkuste to znovu', false);
             } finally {
                 submitBtn.disabled = false;
                 submitBtn.textContent = originalText;
