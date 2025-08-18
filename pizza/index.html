@@ -1123,10 +1123,9 @@ function getTableCountText(count) {
                 }
             } catch (error) {
                 console.error('Submit error:', error);
-                if (cart.length === 0) {
-                    cart = cartBackup;
-                    renderCart();
-                }
+                // Only restore cart if it was cleared due to error (not if already empty for other reasons)
+                cart = cartBackup;
+                renderCart();
                 showMsg('Chyba při odesílání: ' + error.message, false);
             } finally {
                 submitBtn.disabled = false;
