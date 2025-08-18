@@ -514,6 +514,13 @@
                 <label for="customerName">Jméno zákazníka:</label>
                 <input type="text" id="customerName" class="item-note" placeholder="Jméno zákazníka">
             </div>
+            <div style="margin-top: 10px;">
+                <label for="isReserved" style="display: flex; align-items: center; gap: 8px; cursor: pointer;">
+                    <input type="checkbox" id="isReserved" style="transform: scale(1.2);">
+                    <span>📅 Rezervovaná objednávka</span>
+                </label>
+                <small style="color: #666; margin-left: 24px;">Zaškrtněte pro hosty s rezervací</small>
+            </div>
             <div class="cart-footer">
                 <span class="cart-sum" id="cartSum"></span>
                 <button class="cart-btn" id="cartSubmit" onclick="submitOrder()">Odeslat objednávku</button>
@@ -655,6 +662,7 @@
         function clearCart() {
             cart = [];
             document.getElementById('customerName').value = '';
+            document.getElementById('isReserved').checked = false;
             renderCart();
             console.log('Cart cleared');
         }
@@ -986,6 +994,7 @@ function getTableCountText(count) {
             console.log('=== SUBMIT ORDER START ===');
             
             const customerName = document.getElementById('customerName').value;
+            const isReserved = document.getElementById('isReserved').checked;
             const items = [];
             
             // Příprava položek pro databázi
@@ -1005,7 +1014,8 @@ function getTableCountText(count) {
                 table: selectedTable,
                 items,
                 customer_name: customerName,
-                employee_name: localStorage.getItem('employee_name')
+                employee_name: localStorage.getItem('employee_name'),
+                is_reserved: isReserved
             });
             
             // Disable button during processing
@@ -1026,7 +1036,8 @@ function getTableCountText(count) {
                         table: selectedTable,
                         items,
                         customer_name: customerName,
-                        employee_name: localStorage.getItem('employee_name')
+                        employee_name: localStorage.getItem('employee_name'),
+                        is_reserved: isReserved
                     })
                 });
                 

@@ -31,18 +31,26 @@ if ($_POST['action'] ?? false) {
         try {
             $pizza_total = (int)$_POST['pizza_total'];
             $burrata_total = (int)$_POST['burrata_total'];
+            $pizza_reserved = (int)$_POST['pizza_reserved'];
+            $pizza_walkin = (int)$_POST['pizza_walkin'];
+            $burrata_reserved = (int)$_POST['burrata_reserved'];
+            $burrata_walkin = (int)$_POST['burrata_walkin'];
             $date = date('Y-m-d');
             
             $stmt = $pdo->prepare("
-                INSERT INTO daily_supplies (date, pizza_total, burrata_total, updated_by, updated_at) 
-                VALUES (?, ?, ?, ?, NOW())
+                INSERT INTO daily_supplies (date, pizza_total, burrata_total, pizza_reserved, pizza_walkin, burrata_reserved, burrata_walkin, updated_by, updated_at) 
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, NOW())
                 ON DUPLICATE KEY UPDATE 
                 pizza_total = VALUES(pizza_total), 
                 burrata_total = VALUES(burrata_total),
+                pizza_reserved = VALUES(pizza_reserved),
+                pizza_walkin = VALUES(pizza_walkin),
+                burrata_reserved = VALUES(burrata_reserved),
+                burrata_walkin = VALUES(burrata_walkin),
                 updated_by = VALUES(updated_by),
                 updated_at = NOW()
             ");
-            $stmt->execute([$date, $pizza_total, $burrata_total, $_SESSION['username'] ?? 'centycz']);
+            $stmt->execute([$date, $pizza_total, $burrata_total, $pizza_reserved, $pizza_walkin, $burrata_reserved, $burrata_walkin, $_SESSION['username'] ?? 'centycz']);
             
             $success_message = "Zásoby byly úspěšně aktualizovány!";
         } catch(PDOException $e) {
@@ -53,34 +61,44 @@ if ($_POST['action'] ?? false) {
     if ($_POST['action'] === 'manual_reset') {
         try {
             $pizza_remaining = (int)$_POST['pizza_remaining'];
+            $pizza_remaining_reserved = (int)$_POST['pizza_remaining_reserved'];
+            $pizza_remaining_walkin = (int)$_POST['pizza_remaining_walkin'];
             $burrata_remaining = (int)$_POST['burrata_remaining'];
             $date = date('Y-m-d');
             
             // Vypočítáme kolik bylo použito na základě zbývajícího množství
-            $current_supplies = $pdo->prepare("SELECT pizza_total, burrata_total FROM daily_supplies WHERE date = ?");
+            $current_supplies = $pdo->prepare("SELECT pizza_total, burrata_total, pizza_reserved, pizza_walkin, burrata_reserved, burrata_walkin FROM daily_supplies WHERE date = ?");
             $current_supplies->execute([$date]);
             $current = $current_supplies->fetch(PDO::FETCH_ASSOC);
             
             if ($current) {
                 $new_pizza_total = $pizza_remaining + ($current['pizza_total'] - $pizza_remaining);
                 $new_burrata_total = $burrata_remaining + ($current['burrata_total'] - $burrata_remaining);
+                $new_pizza_reserved = $pizza_remaining_reserved + ($current['pizza_reserved'] ?? 0 - $pizza_remaining_reserved);
+                $new_pizza_walkin = $pizza_remaining_walkin + ($current['pizza_walkin'] ?? 0 - $pizza_remaining_walkin);
             } else {
                 $new_pizza_total = $pizza_remaining;
                 $new_burrata_total = $burrata_remaining;
+                $new_pizza_reserved = $pizza_remaining_reserved;
+                $new_pizza_walkin = $pizza_remaining_walkin;
             }
             
             $stmt = $pdo->prepare("
-                INSERT INTO daily_supplies (date, pizza_total, burrata_total, updated_by, updated_at) 
-                VALUES (?, ?, ?, ?, NOW())
+                INSERT INTO daily_supplies (date, pizza_total, burrata_total, pizza_reserved, pizza_walkin, burrata_reserved, burrata_walkin, updated_by, updated_at) 
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, NOW())
                 ON DUPLICATE KEY UPDATE 
                 pizza_total = VALUES(pizza_total), 
                 burrata_total = VALUES(burrata_total),
+                pizza_reserved = VALUES(pizza_reserved),
+                pizza_walkin = VALUES(pizza_walkin),
+                burrata_reserved = VALUES(burrata_reserved),
+                burrata_walkin = VALUES(burrata_walkin),
                 updated_by = VALUES(updated_by),
                 updated_at = NOW()
             ");
-            $stmt->execute([$date, $new_pizza_total, $new_burrata_total, $_SESSION['username'] ?? 'centycz']);
+            $stmt->execute([$date, $new_pizza_total, $new_burrata_total, $new_pizza_reserved, $new_pizza_walkin, $burrata_remaining, $burrata_remaining, $_SESSION['username'] ?? 'centycz']);
             
-            $success_message = "Zásoby byly ručně nastaveny! Pizzy: {$pizza_remaining}ks, Burrata: {$burrata_remaining} porcí";
+            $success_message = "Zásoby byly ručně nastaveny! Pizzy: {$pizza_remaining}ks (Rezervované: {$pizza_remaining_reserved}, Walk-in: {$pizza_remaining_walkin}), Burrata: {$burrata_remaining} porcí";
         } catch(PDOException $e) {
             $error_message = "Chyba při ručním nastavení: " . $e->getMessage();
         }
@@ -99,11 +117,15 @@ if ($_POST['action'] ?? false) {
         
         // ✅ POTÉ resetovat zásoby na nový den
         $stmt = $pdo->prepare("
-            INSERT INTO daily_supplies (date, pizza_total, burrata_total, updated_by, updated_at) 
-            VALUES (?, 120, 15, ?, NOW())
+            INSERT INTO daily_supplies (date, pizza_total, burrata_total, pizza_reserved, pizza_walkin, burrata_reserved, burrata_walkin, updated_by, updated_at) 
+            VALUES (?, 120, 15, 100, 20, 12, 3, ?, NOW())
             ON DUPLICATE KEY UPDATE 
             pizza_total = 120, 
             burrata_total = 15,
+            pizza_reserved = 100,
+            pizza_walkin = 20,
+            burrata_reserved = 12,
+            burrata_walkin = 3,
             updated_by = VALUES(updated_by),
             updated_at = NOW()
         ");
@@ -128,18 +150,63 @@ $supplies = $stmt->fetch(PDO::FETCH_ASSOC);
 
 // ✅ AUTOMATICKÝ RESET - pokud pro dnešek neexistují zásoby, vytvoř defaultní
 if (!$supplies) {
+    // Automatické přidání sloupců pokud neexistují (pro zpětnou kompatibilitu)
+    try {
+        $pdo->exec("ALTER TABLE daily_supplies 
+                   ADD COLUMN IF NOT EXISTS pizza_reserved INT(11) NOT NULL DEFAULT 0 AFTER pizza_used,
+                   ADD COLUMN IF NOT EXISTS pizza_walkin INT(11) NOT NULL DEFAULT 0 AFTER pizza_reserved,
+                   ADD COLUMN IF NOT EXISTS burrata_reserved INT(11) NOT NULL DEFAULT 0 AFTER burrata_used,
+                   ADD COLUMN IF NOT EXISTS burrata_walkin INT(11) NOT NULL DEFAULT 0 AFTER burrata_reserved");
+    } catch (PDOException $e) {
+        // Sloupce již existují, pokračujeme
+    }
+    
     $stmt = $pdo->prepare("
-        INSERT INTO daily_supplies (date, pizza_total, burrata_total, updated_by, updated_at) 
-        VALUES (?, 120, 15, 'AUTO-RESET', NOW())
+        INSERT INTO daily_supplies (date, pizza_total, burrata_total, pizza_reserved, pizza_walkin, burrata_reserved, burrata_walkin, updated_by, updated_at) 
+        VALUES (?, 120, 15, 100, 20, 12, 3, 'AUTO-RESET', NOW())
     ");
     $stmt->execute([$date]);
     
     $pizza_total = 120;
     $burrata_total = 15;
-    $success_message = "🔄 Nový den! Zásoby automaticky nastaveny na výchozí hodnoty.";
+    $pizza_reserved = 100;
+    $pizza_walkin = 20;
+    $burrata_reserved = 12;
+    $burrata_walkin = 3;
+    $success_message = "🔄 Nový den! Zásoby automaticky nastaveny na výchozí hodnoty (Rezervované: 100 pizz, Walk-in: 20 pizz).";
 } else {
+    // Pokud sloupce neexistují v existujících záznamech, přidáme je
+    if (!isset($supplies['pizza_reserved'])) {
+        try {
+            $pdo->exec("ALTER TABLE daily_supplies 
+                       ADD COLUMN IF NOT EXISTS pizza_reserved INT(11) NOT NULL DEFAULT 0 AFTER pizza_used,
+                       ADD COLUMN IF NOT EXISTS pizza_walkin INT(11) NOT NULL DEFAULT 0 AFTER pizza_reserved,
+                       ADD COLUMN IF NOT EXISTS burrata_reserved INT(11) NOT NULL DEFAULT 0 AFTER burrata_used,
+                       ADD COLUMN IF NOT EXISTS burrata_walkin INT(11) NOT NULL DEFAULT 0 AFTER burrata_reserved");
+            
+            // Inicializovat existující záznamy - rozdělíme aktuální zásoby 80/20
+            $pdo->prepare("UPDATE daily_supplies 
+                         SET pizza_reserved = FLOOR(pizza_total * 0.8), 
+                             pizza_walkin = CEILING(pizza_total * 0.2),
+                             burrata_reserved = FLOOR(burrata_total * 0.8),
+                             burrata_walkin = CEILING(burrata_total * 0.2)
+                         WHERE pizza_reserved = 0 AND pizza_walkin = 0")->execute();
+            
+            // Znovu načteme zásoby s novými sloupci
+            $stmt = $pdo->prepare("SELECT * FROM daily_supplies WHERE date = ?");
+            $stmt->execute([$date]);
+            $supplies = $stmt->fetch(PDO::FETCH_ASSOC);
+        } catch (PDOException $e) {
+            // Fallback na staré hodnoty
+        }
+    }
+    
     $pizza_total = $supplies['pizza_total'];
     $burrata_total = $supplies['burrata_total'];
+    $pizza_reserved = $supplies['pizza_reserved'] ?? floor($pizza_total * 0.8);
+    $pizza_walkin = $supplies['pizza_walkin'] ?? ceil($pizza_total * 0.2);
+    $burrata_reserved = $supplies['burrata_reserved'] ?? floor($burrata_total * 0.8);
+    $burrata_walkin = $supplies['burrata_walkin'] ?? ceil($burrata_total * 0.2);
 }
 
 // Počítání kuchyně - jen aktivně připravované
@@ -288,21 +355,46 @@ if ($pizzy_count <= 5) {
     $waiting_time = 60;
 }
 
-// ✅ NOVÁ LOGIKA POČÍTÁNÍ ZÁSOB - POUŽÍVÁ BURNT_PIZZAS_LOG
+// ✅ NOVÁ LOGIKA POČÍTÁNÍ ZÁSOB - ROZDĚLENO NA REZERVOVANÉ A WALK-IN
 try {
-    // Počítáme normální pizzy (všechny aktivní stavy: pending, preparing, ready, delivered - NE spálené)
+    // Přidání is_reserved sloupce pokud neexistuje
+    try {
+        $pdo->exec("ALTER TABLE orders ADD COLUMN IF NOT EXISTS is_reserved BOOLEAN DEFAULT FALSE AFTER employee_name");
+    } catch (PDOException $e) {
+        // Sloupec již existuje
+    }
+    
+    // Počítáme rezervované pizzy
     $stmt = $pdo->prepare("
-        SELECT COALESCE(SUM(oi.quantity), 0) as normal_pizzas
+        SELECT COALESCE(SUM(oi.quantity), 0) as reserved_pizzas
         FROM orders o 
         JOIN order_items oi ON o.id = oi.order_id 
         WHERE DATE(o.created_at) = ? 
-AND oi.item_type = 'pizza'
-AND oi.status IN ('pending', 'preparing', 'ready', 'delivered')
-AND (oi.note IS NULL OR oi.note != 'Spalena')
+        AND oi.item_type = 'pizza'
+        AND oi.status IN ('pending', 'preparing', 'ready', 'delivered')
+        AND (oi.note IS NULL OR oi.note != 'Spalena')
         AND o.status NOT IN ('cancelled', 'archived')
+        AND o.is_reserved = TRUE
     ");
     $stmt->execute([$date]);
-    $normal_pizzas = $stmt->fetch(PDO::FETCH_ASSOC)['normal_pizzas'] ?? 0;
+    $reserved_pizzas = $stmt->fetch(PDO::FETCH_ASSOC)['reserved_pizzas'] ?? 0;
+    
+    // Počítáme walk-in pizzy
+    $stmt = $pdo->prepare("
+        SELECT COALESCE(SUM(oi.quantity), 0) as walkin_pizzas
+        FROM orders o 
+        JOIN order_items oi ON o.id = oi.order_id 
+        WHERE DATE(o.created_at) = ? 
+        AND oi.item_type = 'pizza'
+        AND oi.status IN ('pending', 'preparing', 'ready', 'delivered')
+        AND (oi.note IS NULL OR oi.note != 'Spalena')
+        AND o.status NOT IN ('cancelled', 'archived')
+        AND (o.is_reserved = FALSE OR o.is_reserved IS NULL)
+    ");
+    $stmt->execute([$date]);
+    $walkin_pizzas = $stmt->fetch(PDO::FETCH_ASSOC)['walkin_pizzas'] ?? 0;
+    
+    $normal_pizzas = $reserved_pizzas + $walkin_pizzas;
     
     // ✅ KLÍČOVÁ ČÁST: Počítáme spálené pizzy z burnt_pizzas_log
     $stmt = $pdo->prepare("
@@ -315,11 +407,15 @@ AND (oi.note IS NULL OR oi.note != 'Spalena')
     
     // ✅ VÝPOČET: normální pizzy + spálené pizzy (spálené = další těsto navíc)
     $pizza_used = $normal_pizzas + $burned_pizzas;
+    $pizza_used_reserved = $reserved_pizzas;
+    $pizza_used_walkin = $walkin_pizzas + $burned_pizzas; // Spálené pizzy jdou na úkor walk-in
 
-$debug_info['pizza_calculation'] = "Aktivní pizzy (všechny stavy): {$normal_pizzas}, Spálené pizzy (extra těsto): {$burned_pizzas}, Celková spotřeba těsta: {$pizza_used}";
+$debug_info['pizza_calculation'] = "Rezervované pizzy: {$reserved_pizzas}, Walk-in pizzy: {$walkin_pizzas}, Spálené pizzy (extra těsto): {$burned_pizzas}, Celková spotřeba těsta: {$pizza_used}";
     
 } catch(PDOException $e) {
     $pizza_used = 0;
+    $pizza_used_reserved = 0;
+    $pizza_used_walkin = 0;
     $debug_info['pizza_calc_error'] = $e->getMessage();
 }
 
@@ -347,9 +443,13 @@ AND oi.status IN ('pending', 'preparing', 'ready', 'delivered')
     $debug_info['burrata_calc_error'] = $e->getMessage();
 }
 $pizza_remaining = max(0, $pizza_total - $pizza_used);
+$pizza_remaining_reserved = max(0, $pizza_reserved - $pizza_used_reserved);
+$pizza_remaining_walkin = max(0, $pizza_walkin - $pizza_used_walkin);
 $burrata_remaining = max(0, $burrata_total - $burrata_used);
 
 $pizza_percentage = $pizza_total > 0 ? ($pizza_remaining / $pizza_total) * 100 : 0;
+$pizza_percentage_reserved = $pizza_reserved > 0 ? ($pizza_remaining_reserved / $pizza_reserved) * 100 : 0;
+$pizza_percentage_walkin = $pizza_walkin > 0 ? ($pizza_remaining_walkin / $pizza_walkin) * 100 : 0;
 $burrata_percentage = $burrata_total > 0 ? ($burrata_remaining / $burrata_total) * 100 : 0;
 
 // Denní statistiky
@@ -1030,7 +1130,7 @@ $burrata_alert = $burrata_remaining <= $low_burrata_threshold;
             <ul class="supplies-list">
                 <li class="supply-item">
                     <div class="supply-name">
-                        🍕 Pizzy <small>(všechny aktivní objednávky)</small>
+                        🍕 Pizzy CELKEM <small>(rezervované + walk-in)</small>
                     </div>
                     <div style="display: flex; align-items: center; gap: 10px;">
                         <span class="supply-status <?= $pizza_percentage > 50 ? 'good' : ($pizza_percentage > 20 ? 'warning' : 'critical') ?>">
@@ -1039,6 +1139,36 @@ $burrata_alert = $burrata_remaining <= $low_burrata_threshold;
                         <div class="progress-bar">
                             <div class="progress-fill <?= $pizza_percentage > 50 ? 'good' : ($pizza_percentage > 20 ? 'warning' : 'critical') ?>" 
                                  style="width: <?= $pizza_percentage ?>%"></div>
+                        </div>
+                    </div>
+                </li>
+                
+                <li class="supply-item" style="border-left: 3px solid #667eea; background: rgba(102, 126, 234, 0.05);">
+                    <div class="supply-name">
+                        📅 Pizzy REZERVOVANÉ <small>(pro rezervace hostů)</small>
+                    </div>
+                    <div style="display: flex; align-items: center; gap: 10px;">
+                        <span class="supply-status <?= $pizza_percentage_reserved > 50 ? 'good' : ($pizza_percentage_reserved > 20 ? 'warning' : 'critical') ?>">
+                            <?= $pizza_remaining_reserved ?>/<?= $pizza_reserved ?>
+                        </span>
+                        <div class="progress-bar">
+                            <div class="progress-fill <?= $pizza_percentage_reserved > 50 ? 'good' : ($pizza_percentage_reserved > 20 ? 'warning' : 'critical') ?>" 
+                                 style="width: <?= $pizza_percentage_reserved ?>%"></div>
+                        </div>
+                    </div>
+                </li>
+                
+                <li class="supply-item" style="border-left: 3px solid #28a745; background: rgba(40, 167, 69, 0.05);">
+                    <div class="supply-name">
+                        🚶 Pizzy WALK-IN <small>(pro hosty bez rezervace)</small>
+                    </div>
+                    <div style="display: flex; align-items: center; gap: 10px;">
+                        <span class="supply-status <?= $pizza_percentage_walkin > 50 ? 'good' : ($pizza_percentage_walkin > 20 ? 'warning' : 'critical') ?>">
+                            <?= $pizza_remaining_walkin ?>/<?= $pizza_walkin ?>
+                        </span>
+                        <div class="progress-bar">
+                            <div class="progress-fill <?= $pizza_percentage_walkin > 50 ? 'good' : ($pizza_percentage_walkin > 20 ? 'warning' : 'critical') ?>" 
+                                 style="width: <?= $pizza_percentage_walkin ?>%"></div>
                         </div>
                     </div>
                 </li>
@@ -1070,15 +1200,39 @@ $burrata_alert = $burrata_remaining <= $low_burrata_threshold;
                             <input type="hidden" name="action" value="update_supplies">
                             
                             <div class="form-row">
-                                <label>🍕 Pizzy:</label>
+                                <label>🍕 Pizzy celkem:</label>
                                 <input type="number" name="pizza_total" value="<?= $pizza_total ?>" min="0" max="500" required>
                                 <span style="font-size: 0.8rem; color: #666;">celkem na den</span>
                             </div>
                             
+                            <div class="form-row" style="margin-left: 20px;">
+                                <label>📅 Rezervované:</label>
+                                <input type="number" name="pizza_reserved" value="<?= $pizza_reserved ?>" min="0" max="500" required>
+                                <span style="font-size: 0.8rem; color: #666;">pro rezervace</span>
+                            </div>
+                            
+                            <div class="form-row" style="margin-left: 20px;">
+                                <label>🚶 Walk-in:</label>
+                                <input type="number" name="pizza_walkin" value="<?= $pizza_walkin ?>" min="0" max="500" required>
+                                <span style="font-size: 0.8rem; color: #666;">pro hosty bez rezervace</span>
+                            </div>
+                            
                             <div class="form-row">
-                                <label>🧀 Burrata:</label>
+                                <label>🧀 Burrata celkem:</label>
                                 <input type="number" name="burrata_total" value="<?= $burrata_total ?>" min="0" max="100" required>
                                 <span style="font-size: 0.8rem; color: #666;">porcí na den</span>
+                            </div>
+                            
+                            <div class="form-row" style="margin-left: 20px;">
+                                <label>📅 Rezervované:</label>
+                                <input type="number" name="burrata_reserved" value="<?= $burrata_reserved ?>" min="0" max="100" required>
+                                <span style="font-size: 0.8rem; color: #666;">pro rezervace</span>
+                            </div>
+                            
+                            <div class="form-row" style="margin-left: 20px;">
+                                <label>🚶 Walk-in:</label>
+                                <input type="number" name="burrata_walkin" value="<?= $burrata_walkin ?>" min="0" max="100" required>
+                                <span style="font-size: 0.8rem; color: #666;">pro hosty bez rezervace</span>
                             </div>
                             
                             <div class="btn-group">
@@ -1093,15 +1247,27 @@ $burrata_alert = $burrata_remaining <= $low_burrata_threshold;
                     <div id="manualForm" style="display: none;">
                         <h4 style="margin-bottom: 10px; color: #333;">🎯 Nastavit zbývající zásoby</h4>
                         <p style="font-size: 0.9rem; color: #666; margin-bottom: 15px;">
-                            Zadejte kolik momentálně zbývá (např. 40ks když zbývalo 40ks)
+                            Zadejte kolik momentálně zbývá v každé kategorii
                         </p>
                         <form method="POST">
                             <input type="hidden" name="action" value="manual_reset">
                             
                             <div class="form-row">
-                                <label>🍕 Zbývá pizz:</label>
+                                <label>🍕 Zbývá pizz celkem:</label>
                                 <input type="number" name="pizza_remaining" value="<?= $pizza_remaining ?>" min="0" max="500" required>
                                 <span style="font-size: 0.8rem; color: #666;">kusů aktuálně</span>
+                            </div>
+                            
+                            <div class="form-row" style="margin-left: 20px;">
+                                <label>📅 Zbývá rezervovaných:</label>
+                                <input type="number" name="pizza_remaining_reserved" value="<?= $pizza_remaining_reserved ?>" min="0" max="500" required>
+                                <span style="font-size: 0.8rem; color: #666;">kusů pro rezervace</span>
+                            </div>
+                            
+                            <div class="form-row" style="margin-left: 20px;">
+                                <label>🚶 Zbývá walk-in:</label>
+                                <input type="number" name="pizza_remaining_walkin" value="<?= $pizza_remaining_walkin ?>" min="0" max="500" required>
+                                <span style="font-size: 0.8rem; color: #666;">kusů pro walk-in</span>
                             </div>
                             
                             <div class="form-row">
