@@ -290,16 +290,16 @@ if ($pizzy_count <= 5) {
 
 // ✅ NOVÁ LOGIKA POČÍTÁNÍ ZÁSOB - POUŽÍVÁ BURNT_PIZZAS_LOG
 try {
-    // Počítáme normální pizzy (jen aktivně připravované, ne hotové a NE spálené)
+    // Počítáme normální pizzy (všechny aktivní stavy: pending, preparing, ready, delivered - NE spálené)
     $stmt = $pdo->prepare("
         SELECT COALESCE(SUM(oi.quantity), 0) as normal_pizzas
         FROM orders o 
         JOIN order_items oi ON o.id = oi.order_id 
         WHERE DATE(o.created_at) = ? 
 AND oi.item_type = 'pizza'
-AND oi.status IN ('pending', 'preparing')
+AND oi.status IN ('pending', 'preparing', 'ready', 'delivered')
 AND (oi.note IS NULL OR oi.note != 'Spalena')
-        AND o.status != 'archived'
+        AND o.status NOT IN ('cancelled', 'archived')
     ");
     $stmt->execute([$date]);
     $normal_pizzas = $stmt->fetch(PDO::FETCH_ASSOC)['normal_pizzas'] ?? 0;
@@ -313,10 +313,10 @@ AND (oi.note IS NULL OR oi.note != 'Spalena')
     $stmt->execute([$date]);
     $burned_pizzas = $stmt->fetch(PDO::FETCH_ASSOC)['burned_pizzas'] ?? 0;
     
-    // ✅ VÝPOČET: normální pizzy + 2x spálené (protože spálená = nové těsto)
+    // ✅ VÝPOČET: normální pizzy + spálené pizzy (spálené = další těsto navíc)
     $pizza_used = $normal_pizzas + $burned_pizzas;
 
-$debug_info['pizza_calculation'] = "Normální pizzy (bez spálených): {$normal_pizzas}, Spálené pizzy: {$burned_pizzas}, Celková spotřeba těsta: {$pizza_used}";
+$debug_info['pizza_calculation'] = "Aktivní pizzy (všechny stavy): {$normal_pizzas}, Spálené pizzy (extra těsto): {$burned_pizzas}, Celková spotřeba těsta: {$pizza_used}";
     
 } catch(PDOException $e) {
     $pizza_used = 0;
@@ -325,21 +325,22 @@ $debug_info['pizza_calculation'] = "Normální pizzy (bez spálených): {$normal
 
 
 // Burrata zůstává stejná
-// ✅ NOVÁ LOGIKA PRO BURRATU - stejně jako u pizzy
+// ✅ NOVÁ LOGIKA PRO BURRATU - stejně jako u pizzy (všechny aktivní stavy)
 try {
-    // Počítáme jen OBJEDNANÉ položky s burratou (ne hotové!)
+    // Počítáme všechny aktivní položky s burratou (pending, preparing, ready, delivered)
     $stmt = $pdo->prepare("
         SELECT COALESCE(SUM(oi.quantity), 0) as burrata_used
         FROM orders o 
         JOIN order_items oi ON o.id = oi.order_id 
         WHERE DATE(o.created_at) = ? 
 AND (oi.item_name LIKE '%burrata%' OR oi.item_name LIKE '%Burrata%')
-AND oi.status IN ('pending', 'preparing')
+AND oi.status IN ('pending', 'preparing', 'ready', 'delivered')
+        AND o.status NOT IN ('cancelled', 'archived')
     ");
     $stmt->execute([$date]);
     $burrata_used = $stmt->fetch(PDO::FETCH_ASSOC)['burrata_used'] ?? 0;
     
-    $debug_info['burrata_calculation'] = "Objednané položky s burratou: {$burrata_used} (hotové se nepočítají - burrata se počítá jen při objednání)";
+    $debug_info['burrata_calculation'] = "Aktivní položky s burratou (všechny stavy): {$burrata_used} - odečítá se hned při objednání";
     
 } catch(PDOException $e) {
     $burrata_used = 0;
@@ -398,13 +399,13 @@ try {
     $stmt->execute([$date]);
     $total_reservations = $stmt->fetch(PDO::FETCH_ASSOC)['total_reservations'] ?? 0;
     
-    // Rezervace, které již proběhly (čas rezervace < aktuální čas)
+    // Rezervace, které již proběhly (čas rezervace + 15 minut < aktuální čas)
     $current_time = date('H:i:s');
     $stmt = $pdo->prepare("
         SELECT COUNT(*) as past_reservations
         FROM reservations 
         WHERE reservation_date = ? 
-        AND reservation_time < ? 
+        AND ADDTIME(reservation_time, '00:15:00') < ? 
         AND status != 'cancelled'
     ");
     $stmt->execute([$date, $current_time]);
@@ -414,12 +415,12 @@ try {
     $upcoming_reservations = $total_reservations - $past_reservations;
     
     // Nejbližší rezervace
-  // Najít nejbližší časový slot s rezervacemi
+  // Najít nejbližší časový slot s rezervacemi (včetně +15 minut zobrazení)
 $stmt = $pdo->prepare("
     SELECT DISTINCT reservation_time 
     FROM reservations 
     WHERE reservation_date = ? 
-    AND reservation_time >= ? 
+    AND ADDTIME(reservation_time, '00:15:00') >= ? 
     AND status != 'cancelled'
     ORDER BY reservation_time 
     LIMIT 1
@@ -447,12 +448,12 @@ if ($next_time_slot) {
     $next_slot_people_count = array_sum(array_column($next_reservations, 'party_size'));
 }
     
-    // Celkový počet osob z nadcházejících rezervací
+    // Celkový počet osob z nadcházejících rezervací (včetně +15 minut zobrazení)
     $stmt = $pdo->prepare("
         SELECT COALESCE(SUM(party_size), 0) as total_upcoming_people
         FROM reservations 
         WHERE reservation_date = ? 
-        AND reservation_time >= ? 
+        AND ADDTIME(reservation_time, '00:15:00') >= ? 
         AND status != 'cancelled'
     ");
     $stmt->execute([$date, $current_time]);
@@ -980,12 +981,12 @@ $burrata_alert = $burrata_remaining <= $low_burrata_threshold;
             </div>
             
             <div class="kitchen-note">
-                💡 <strong>Poznámka:</strong> Zobrazuje se jen jídlo, které se AKTIVNĚ PŘIPRAVUJE (pending, preparing). Hotové jídlo připravené k podání (ready) už není započítané.
+                💡 <strong>Poznámka:</strong> Zobrazuje se jen jídlo, které se AKTIVNĚ PŘIPRAVUJE (pending, preparing). Zásoby ale počítají VŠECHNY aktivní objednávky (pending, preparing, ready, delivered).
             </div>
             
             <?php if (isset($burned_pizzas) && $burned_pizzas > 0): ?>
             <div class="burned-note">
-                🔥 <strong>Spálené pizzy dnes:</strong> <?= $burned_pizzas ?> pizz (spotřeba <?= $burned_pizzas ?> kusů těsta)
+                🔥 <strong>Spálené pizzy dnes:</strong> <?= $burned_pizzas ?> pizz (další spotřeba <?= $burned_pizzas ?> kusů těsta navíc)
             </div>
             <?php endif; ?>
             
@@ -1029,7 +1030,7 @@ $burrata_alert = $burrata_remaining <= $low_burrata_threshold;
             <ul class="supplies-list">
                 <li class="supply-item">
                     <div class="supply-name">
-                        🍕 Pizzy <small>(jen připravované)</small>
+                        🍕 Pizzy <small>(všechny aktivní objednávky)</small>
                     </div>
                     <div style="display: flex; align-items: center; gap: 10px;">
                         <span class="supply-status <?= $pizza_percentage > 50 ? 'good' : ($pizza_percentage > 20 ? 'warning' : 'critical') ?>">
@@ -1044,7 +1045,7 @@ $burrata_alert = $burrata_remaining <= $low_burrata_threshold;
                 
                 <li class="supply-item">
                     <div class="supply-name">
-                        🧀 Burrata <small>(jen připravované)</small>
+                        🧀 Burrata <small>(všechny aktivní objednávky)</small>
                     </div>
                     <div style="display: flex; align-items: center; gap: 10px;">
                         <span class="supply-status <?= $burrata_percentage > 50 ? 'good' : ($burrata_percentage > 20 ? 'warning' : 'critical') ?>">
