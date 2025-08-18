@@ -358,9 +358,10 @@ try {
             $items = $body['items'] ?? [];
             $customer_name = $body['customer_name'] ?? '';
             $employee_name = $body['employee_name'] ?? '';
+            $is_reserved = $body['is_reserved'] ?? false; // Nový parametr pro označení rezervace
             
             file_put_contents('/tmp/restaurant_debug.log', 
-                "Parsed data: table=$table_number, items=" . count($items) . ", customer=$customer_name, employee=$employee_name\n", 
+                "Parsed data: table=$table_number, items=" . count($items) . ", customer=$customer_name, employee=$employee_name, is_reserved=" . ($is_reserved ? 'true' : 'false') . "\n", 
                 FILE_APPEND
             );
             
@@ -401,9 +402,16 @@ try {
             $final_employee_name = $employee_name ?: ($_SESSION['employee_name'] ?? '');
             file_put_contents('/tmp/restaurant_debug.log', "Final employee name: $final_employee_name\n", FILE_APPEND);
 
+            // Add is_reserved column if it doesn't exist
+            try {
+                $pdo->exec("ALTER TABLE orders ADD COLUMN IF NOT EXISTS is_reserved BOOLEAN DEFAULT FALSE AFTER employee_name");
+            } catch (PDOException $e) {
+                // Column already exists
+            }
+
             // Create order
-            $stmt = $pdo->prepare("INSERT INTO orders (table_session_id, created_at, status, order_type, customer_name, employee_name) VALUES (?, NOW(), 'pending', 'other', ?, ?)");
-            $result = $stmt->execute([$table_session_id, $customer_name, $final_employee_name]);
+            $stmt = $pdo->prepare("INSERT INTO orders (table_session_id, created_at, status, order_type, customer_name, employee_name, is_reserved) VALUES (?, NOW(), 'pending', 'other', ?, ?, ?)");
+            $result = $stmt->execute([$table_session_id, $customer_name, $final_employee_name, $is_reserved ? 1 : 0]);
             
             if (!$result) {
                 file_put_contents('/tmp/restaurant_debug.log', "ERROR: Failed to insert order\n", FILE_APPEND);
@@ -795,6 +803,9 @@ if ($action === 'proxy-print') {
                 o.created_at,
                 o.printed_at,
                 o.id as order_id,
+                o.is_reserved,
+                o.customer_name,
+                o.employee_name,
                 ts.table_number,
                 rt.table_code,
                 rt.notes,

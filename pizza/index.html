@@ -443,6 +443,12 @@
         .order-title { font-size: 1.1em; font-weight: bold; margin-bottom: 8px;}
         .order-list { list-style: none; padding: 0; margin: 0;}
         .order-item { display: flex; align-items: flex-start; gap: 12px; border-bottom: 1px solid #e2e8f0; padding: 6px 0;}
+        .order-item.reserved-order { 
+            background: rgba(102, 126, 234, 0.05); 
+            border-left: 3px solid #667eea; 
+            padding-left: 8px;
+            border-radius: 4px;
+        }
         .order-status { font-size: .85em; border-radius: 4px; padding: 2px 6px; margin-left: 6px;}
         .status-pending { background: #e2e8f0; color: #222; }
         .status-preparing { background: #faf089; color: #b7791f;}
@@ -513,6 +519,13 @@
             <div>
                 <label for="customerName">Jméno zákazníka:</label>
                 <input type="text" id="customerName" class="item-note" placeholder="Jméno zákazníka">
+            </div>
+            <div style="margin-top: 10px;">
+                <label for="isReserved" style="display: flex; align-items: center; gap: 8px; cursor: pointer;">
+                    <input type="checkbox" id="isReserved" style="transform: scale(1.2);">
+                    <span>📅 Rezervovaná objednávka</span>
+                </label>
+                <small style="color: #666; margin-left: 24px;">Zaškrtněte pro hosty s rezervací</small>
             </div>
             <div class="cart-footer">
                 <span class="cart-sum" id="cartSum"></span>
@@ -655,6 +668,7 @@
         function clearCart() {
             cart = [];
             document.getElementById('customerName').value = '';
+            document.getElementById('isReserved').checked = false;
             renderCart();
             console.log('Cart cleared');
         }
@@ -986,6 +1000,7 @@ function getTableCountText(count) {
             console.log('=== SUBMIT ORDER START ===');
             
             const customerName = document.getElementById('customerName').value;
+            const isReserved = document.getElementById('isReserved').checked;
             const items = [];
             
             // Příprava položek pro databázi
@@ -1005,7 +1020,8 @@ function getTableCountText(count) {
                 table: selectedTable,
                 items,
                 customer_name: customerName,
-                employee_name: localStorage.getItem('employee_name')
+                employee_name: localStorage.getItem('employee_name'),
+                is_reserved: isReserved
             });
             
             // Disable button during processing
@@ -1026,7 +1042,8 @@ function getTableCountText(count) {
                         table: selectedTable,
                         items,
                         customer_name: customerName,
-                        employee_name: localStorage.getItem('employee_name')
+                        employee_name: localStorage.getItem('employee_name'),
+                        is_reserved: isReserved
                     })
                 });
                 
@@ -1148,9 +1165,13 @@ function getTableCountText(count) {
                     statusStyle = 'background-color: #e53e3e; color: #fff;';
                 }
 
-                el.innerHTML += `<li class="order-item">
+                const isReserved = order.is_reserved === '1' || order.is_reserved === 1 || order.is_reserved === true;
+                const reservationBadge = isReserved ? '<span class="reservation-badge" style="background: #667eea; color: white; padding: 2px 6px; border-radius: 10px; font-size: 0.75em; margin-left: 6px;">📅 REZERVACE</span>' : '';
+
+                el.innerHTML += `<li class="order-item${isReserved ? ' reserved-order' : ''}">
                     <div>
                         <span>Objednávka #${order.id}</span>
+                        ${reservationBadge}
                         <span class="order-status ${statusClass}" style="${statusStyle}">${statusText}</span>
                     </div>
                     <div>
