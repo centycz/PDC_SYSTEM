@@ -119,6 +119,21 @@
             background: #fdf5e3;
         }
         
+        .order-card.reserved {
+            border-color: #667eea;
+            background: #f0f3ff;
+        }
+        
+        .reservation-badge {
+            background: #667eea;
+            color: white;
+            padding: 3px 8px;
+            border-radius: 12px;
+            font-size: 0.75em;
+            font-weight: 600;
+            margin-left: 8px;
+        }
+        
         .order-header {
             display: flex;
             justify-content: space-between;
@@ -560,6 +575,7 @@
             const tableNumber = oldest.table_number;
             const tableSessionId = oldest.table_session_id;
             const printed_at = oldest.printed_at;
+            const isReserved = oldest.is_reserved === '1' || oldest.is_reserved === 1 || oldest.is_reserved === true;
             
             // Získej čekající položky pro tento stůl
             const { waitingPasta, waitingDesserts } = getWaitingItemsForTable(tableSessionId);
@@ -659,9 +675,12 @@
             }
 
             return `
-                <div class="order-card${isUrgent ? ' urgent' : ''}">
+                <div class="order-card${isUrgent ? ' urgent' : ''}${isReserved ? ' reserved' : ''}">
                     <div class="order-header">
-                        <div class="table-number">🍽️ ${table}${minutesAgo > 20 ? '<span class="priority-badge">PRIORITA</span>' : ''}</div>
+                        <div class="table-number">
+                            🍽️ ${table}${minutesAgo > 20 ? '<span class="priority-badge">PRIORITA</span>' : ''}
+                            ${isReserved ? '<span class="reservation-badge">📅 REZERVACE</span>' : ''}
+                        </div>
                         <div class="order-time">⏱️ ${minutesAgo} min</div>
                     </div>
                     ${printInfo}
