@@ -666,11 +666,12 @@
 
         // Funkce pro vymazání košíku (centralizovaná)
         function clearCart() {
+            console.log('clearCart() called, current cart length:', cart.length);
             cart = [];
             document.getElementById('customerName').value = '';
             document.getElementById('isReserved').checked = false;
             renderCart();
-            console.log('Cart cleared');
+            console.log('Cart cleared, new cart length:', cart.length);
         }
 
         // Utility funkce
@@ -1068,7 +1069,9 @@ function getTableCountText(count) {
                 
                 if (orderResponse.success) {
                     // ✅ Košík vymazat POUZE při úspěšném odeslání
+                    console.log('Order successful, clearing cart...');
                     clearCart();
+                    console.log('Cart cleared, current cart length:', cart.length);
                     
                     const orderId = orderResponse.data.order_id;
                     console.log('✅ Order created with ID:', orderId);
