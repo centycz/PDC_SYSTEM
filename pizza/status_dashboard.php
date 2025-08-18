@@ -37,6 +37,10 @@ if ($_POST['action'] ?? false) {
             $burrata_walkin = (int)$_POST['burrata_walkin'];
             $date = date('Y-m-d');
             
+            // ✅ Reset spálených pizz při nastavení nových zásob
+            $stmt = $pdo->prepare("DELETE FROM burnt_pizzas_log WHERE DATE(burnt_at) = ?");
+            $stmt->execute([$date]);
+            
             $stmt = $pdo->prepare("
                 INSERT INTO daily_supplies (date, pizza_total, burrata_total, pizza_reserved, pizza_walkin, burrata_reserved, burrata_walkin, updated_by, updated_at) 
                 VALUES (?, ?, ?, ?, ?, ?, ?, ?, NOW())
@@ -52,7 +56,7 @@ if ($_POST['action'] ?? false) {
             ");
             $stmt->execute([$date, $pizza_total, $burrata_total, $pizza_reserved, $pizza_walkin, $burrata_reserved, $burrata_walkin, $_SESSION['username'] ?? 'centycz']);
             
-            $success_message = "Zásoby byly úspěšně aktualizovány!";
+            $success_message = "Zásoby byly úspěšně aktualizovány! Spálené pizzy byly resetovány.";
         } catch(PDOException $e) {
             $error_message = "Chyba při ukládání: " . $e->getMessage();
         }
@@ -65,6 +69,10 @@ if ($_POST['action'] ?? false) {
             $pizza_remaining_walkin = (int)$_POST['pizza_remaining_walkin'];
             $burrata_remaining = (int)$_POST['burrata_remaining'];
             $date = date('Y-m-d');
+            
+            // ✅ Reset spálených pizz při ručním nastavení zásob
+            $stmt = $pdo->prepare("DELETE FROM burnt_pizzas_log WHERE DATE(burnt_at) = ?");
+            $stmt->execute([$date]);
             
             // Vypočítáme kolik bylo použito na základě zbývajícího množství
             $current_supplies = $pdo->prepare("SELECT pizza_total, burrata_total, pizza_reserved, pizza_walkin, burrata_reserved, burrata_walkin FROM daily_supplies WHERE date = ?");
@@ -98,7 +106,7 @@ if ($_POST['action'] ?? false) {
             ");
             $stmt->execute([$date, $new_pizza_total, $new_burrata_total, $new_pizza_reserved, $new_pizza_walkin, $burrata_remaining, $burrata_remaining, $_SESSION['username'] ?? 'centycz']);
             
-            $success_message = "Zásoby byly ručně nastaveny! Pizzy: {$pizza_remaining}ks (Rezervované: {$pizza_remaining_reserved}, Walk-in: {$pizza_remaining_walkin}), Burrata: {$burrata_remaining} porcí";
+            $success_message = "Zásoby byly ručně nastaveny! Pizzy: {$pizza_remaining}ks (Rezervované: {$pizza_remaining_reserved}, Walk-in: {$pizza_remaining_walkin}), Burrata: {$burrata_remaining} porcí. Spálené pizzy byly resetovány.";
         } catch(PDOException $e) {
             $error_message = "Chyba při ručním nastavení: " . $e->getMessage();
         }
@@ -148,7 +156,7 @@ $stmt = $pdo->prepare("SELECT * FROM daily_supplies WHERE date = ?");
 $stmt->execute([$date]);
 $supplies = $stmt->fetch(PDO::FETCH_ASSOC);
 
-// ✅ AUTOMATICKÝ RESET - pokud pro dnešek neexistují zásoby, vytvoř defaultní
+// ✅ AUTOMATICKÝ RESET - pokud pro dnešek neexistují zásoby, vytvoř defaultní s automatickým výpočtem rezervací
 if (!$supplies) {
     // Automatické přidání sloupců pokud neexistují (pro zpětnou kompatibilitu)
     try {
@@ -161,16 +169,44 @@ if (!$supplies) {
         // Sloupce již existují, pokračujeme
     }
     
+    // ✅ AUTOMATICKÝ VÝPOČET rezervovaných pizz z databáze rezervací
+    try {
+        $stmt = $pdo->prepare("
+            SELECT COUNT(*) as total_reservations, 
+                   COALESCE(SUM(party_size), 0) as total_people
+            FROM reservations 
+            WHERE reservation_date = ? AND status != 'cancelled'
+        ");
+        $stmt->execute([$date]);
+        $reservation_data = $stmt->fetch(PDO::FETCH_ASSOC);
+        
+        $total_people_today = $reservation_data['total_people'] ?? 0;
+        
+        // Odhad: průměrně 1.2 pizzy na osobu z rezervací
+        $estimated_pizzas_for_reservations = ceil($total_people_today * 1.2);
+        
+        // Minimálně 50 pizz pro rezervace, maximálně 100
+        $auto_pizza_reserved = max(50, min(100, $estimated_pizzas_for_reservations));
+        $auto_pizza_walkin = 120 - $auto_pizza_reserved;
+        
+        $debug_info['auto_reservation_calc'] = "Rezervace dnes: {$reservation_data['total_reservations']}, osob: {$total_people_today}, odhadované pizzy: {$estimated_pizzas_for_reservations}, nastaveno: {$auto_pizza_reserved}";
+    } catch (PDOException $e) {
+        // Fallback na fixní hodnoty
+        $auto_pizza_reserved = 100;
+        $auto_pizza_walkin = 20;
+        $debug_info['auto_reservation_error'] = $e->getMessage();
+    }
+    
     $stmt = $pdo->prepare("
         INSERT INTO daily_supplies (date, pizza_total, burrata_total, pizza_reserved, pizza_walkin, burrata_reserved, burrata_walkin, updated_by, updated_at) 
-        VALUES (?, 120, 15, 100, 20, 12, 3, 'AUTO-RESET', NOW())
+        VALUES (?, 120, 15, ?, ?, 12, 3, 'AUTO-CALC', NOW())
     ");
-    $stmt->execute([$date]);
+    $stmt->execute([$date, $auto_pizza_reserved, $auto_pizza_walkin]);
     
     $pizza_total = 120;
     $burrata_total = 15;
-    $pizza_reserved = 100;
-    $pizza_walkin = 20;
+    $pizza_reserved = $auto_pizza_reserved;
+    $pizza_walkin = $auto_pizza_walkin;
     $burrata_reserved = 12;
     $burrata_walkin = 3;
     $success_message = "🔄 Nový den! Zásoby automaticky nastaveny na výchozí hodnoty (Rezervované: 100 pizz, Walk-in: 20 pizz).";
