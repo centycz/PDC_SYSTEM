@@ -407,7 +407,7 @@ try {
         JOIN order_items oi ON o.id = oi.order_id 
         WHERE DATE(o.created_at) = ? 
         AND oi.item_type = 'pizza'
-        AND oi.status IN ('pending', 'preparing', 'ready', 'delivered')
+        AND oi.status IN ('pending', 'preparing', 'ready', 'delivered', 'paid')
         AND (oi.note IS NULL OR oi.note != 'Spalena')
         AND o.status NOT IN ('cancelled', 'archived')
         AND o.is_reserved = TRUE
@@ -422,7 +422,7 @@ try {
         JOIN order_items oi ON o.id = oi.order_id 
         WHERE DATE(o.created_at) = ? 
         AND oi.item_type = 'pizza'
-        AND oi.status IN ('pending', 'preparing', 'ready', 'delivered')
+        AND oi.status IN ('pending', 'preparing', 'ready', 'delivered', 'paid')
         AND (oi.note IS NULL OR oi.note != 'Spalena')
         AND o.status NOT IN ('cancelled', 'archived')
         AND (o.is_reserved = FALSE OR o.is_reserved IS NULL)
@@ -459,20 +459,20 @@ $debug_info['pizza_calculation'] = "Rezervované pizzy: {$reserved_pizzas}, Walk
 // Burrata zůstává stejná
 // ✅ NOVÁ LOGIKA PRO BURRATU - stejně jako u pizzy (všechny aktivní stavy)
 try {
-    // Počítáme všechny aktivní položky s burratou (pending, preparing, ready, delivered)
+    // Počítáme všechny aktivní položky s burratou (pending, preparing, ready, delivered, paid)
     $stmt = $pdo->prepare("
         SELECT COALESCE(SUM(oi.quantity), 0) as burrata_used
         FROM orders o 
         JOIN order_items oi ON o.id = oi.order_id 
         WHERE DATE(o.created_at) = ? 
 AND (oi.item_name LIKE '%burrata%' OR oi.item_name LIKE '%Burrata%')
-AND oi.status IN ('pending', 'preparing', 'ready', 'delivered')
+AND oi.status IN ('pending', 'preparing', 'ready', 'delivered', 'paid')
         AND o.status NOT IN ('cancelled', 'archived')
     ");
     $stmt->execute([$date]);
     $burrata_used = $stmt->fetch(PDO::FETCH_ASSOC)['burrata_used'] ?? 0;
     
-    $debug_info['burrata_calculation'] = "Aktivní položky s burratou (všechny stavy): {$burrata_used} - odečítá se hned při objednání";
+    $debug_info['burrata_calculation'] = "Aktivní položky s burratou (všechny stavy včetně paid): {$burrata_used} - odečítá se hned při objednání";
     
 } catch(PDOException $e) {
     $burrata_used = 0;
