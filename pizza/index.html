@@ -1031,7 +1031,6 @@ function getTableCountText(count) {
             submitBtn.textContent = 'Odesílám...';
             
             const cartBackup = [...cart];
-            clearCart();
             showMsg('🔄 Odesílám objednávku...');
             
             try {
@@ -1052,8 +1051,6 @@ function getTableCountText(count) {
                 if (!response.ok) {
                     const errorText = await response.text();
                     console.error('HTTP Error:', response.status, errorText);
-                    cart = cartBackup;
-                    renderCart();
                     throw new Error(`Server error (${response.status})`);
                 }
                 
@@ -1064,14 +1061,15 @@ function getTableCountText(count) {
                     orderResponse = JSON.parse(responseText);
                 } catch (parseError) {
                     console.error('JSON Parse error:', parseError);
-                    cart = cartBackup;
-                    renderCart();
                     throw new Error('Server vrátil neplatnou odpověď');
                 }
                 
                 console.log('Parsed response:', orderResponse);
                 
                 if (orderResponse.success) {
+                    // ✅ Košík vymazat POUZE při úspěšném odeslání
+                    clearCart();
+                    
                     const orderId = orderResponse.data.order_id;
                     console.log('✅ Order created with ID:', orderId);
                     
@@ -1117,15 +1115,11 @@ function getTableCountText(count) {
                     
                 } else {
                     console.error('API Error:', orderResponse.error);
-                    cart = cartBackup;
-                    renderCart();
                     showMsg(orderResponse.error || 'Chyba při odesílání objednávky', false);
                 }
             } catch (error) {
                 console.error('Submit error:', error);
                 // Only restore cart if it was cleared due to error (not if already empty for other reasons)
-                cart = cartBackup;
-                renderCart();
                 showMsg('Chyba při odesílání: ' + error.message, false);
             } finally {
                 submitBtn.disabled = false;
