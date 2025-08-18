@@ -475,32 +475,6 @@ try {
             $pdo->commit();
             file_put_contents('/tmp/restaurant_debug.log', "Transaction committed successfully\n", FILE_APPEND);
             
-            // Try to send to printer
-            $print_success = false;
-            try {
-                $print_success = sendToPrinter($order_id, $pdo);
-                file_put_contents('/tmp/restaurant_debug.log', "Print result: " . ($print_success ? 'SUCCESS' : 'FAILED') . "\n", FILE_APPEND);
-            } catch (Exception $e) {
-                file_put_contents('/tmp/restaurant_debug.log', "Print error: " . $e->getMessage() . "\n", FILE_APPEND);
-            }
-            
-            // Return success response
-            $response = [
-                'success' => true,
-                'data' => [
-                    'order_id' => $order_id,
-                    'printed' => $print_success,
-                    'print_status' => $print_success ? 'sent' : 'failed'
-                ],
-                'error' => null
-            ];
-            
-            file_put_contents('/tmp/restaurant_debug.log', "Sending response: " . json_encode($response) . "\n", FILE_APPEND);
-            
-            header('Content-Type: application/json; charset=utf-8');
-            echo json_encode($response, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES);
-            exit;
-            
         } catch (Exception $e) {
             if (isset($pdo) && $pdo->inTransaction()) {
                 $pdo->rollBack();
@@ -517,6 +491,36 @@ try {
             ], JSON_UNESCAPED_UNICODE);
             exit;
         }
+        
+        // ✅ CRITICAL SECTION COMPLETED - Order is safely saved in database
+        // From this point forward, we MUST return success regardless of non-critical failures
+        
+        // Try to send to printer (non-critical operation)
+        $print_success = false;
+        try {
+            $print_success = sendToPrinter($order_id, $pdo);
+            file_put_contents('/tmp/restaurant_debug.log', "Print result: " . ($print_success ? 'SUCCESS' : 'FAILED') . "\n", FILE_APPEND);
+        } catch (Exception $e) {
+            file_put_contents('/tmp/restaurant_debug.log', "Print error: " . $e->getMessage() . "\n", FILE_APPEND);
+            // Don't rethrow - printer failure should not affect order success
+        }
+        
+        // ✅ ALWAYS return success response when order was created
+        $response = [
+            'success' => true,
+            'data' => [
+                'order_id' => $order_id,
+                'printed' => $print_success,
+                'print_status' => $print_success ? 'sent' : 'failed'
+            ],
+            'error' => null
+        ];
+        
+        file_put_contents('/tmp/restaurant_debug.log', "Sending response: " . json_encode($response) . "\n", FILE_APPEND);
+        
+        header('Content-Type: application/json; charset=utf-8');
+        echo json_encode($response, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES);
+        exit;
     }
 
     // PROXY PRINT - OPRAVENÁ FUNKCE
