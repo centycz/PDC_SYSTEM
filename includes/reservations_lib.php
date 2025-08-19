@@ -2,6 +2,7 @@
 /**
  * Reservations Library - Business logic for restaurant reservations
  * Handles 2-hour blocks, collision detection, and status workflows
+ * Enhanced with 30-minute slots and configurable opening hours
  */
 
 // Database connection helper
@@ -17,6 +18,124 @@ function getReservationDb() {
         throw new Exception('Database connection error: ' . $e->getMessage());
     }
     return $pdo;
+}
+
+/**
+ * Získá otevírací hodiny pro daný den
+ * @param PDO $pdo Database connection
+ * @param string $date Date in Y-m-d format
+ * @return array Array with open_time and close_time (HH:MM format)
+ */
+function getOpeningHours($pdo, $date) {
+    // Try to create table if it doesn't exist (graceful fallback)
+    try {
+        $pdo->exec("
+            CREATE TABLE IF NOT EXISTS reservation_opening_hours (
+                date DATE PRIMARY KEY,
+                open_time TIME NOT NULL DEFAULT '16:00:00',
+                close_time TIME NOT NULL DEFAULT '22:00:00',
+                updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP
+            ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci
+        ");
+    } catch (PDOException $e) {
+        // Silently handle table creation failure
+        error_log("Could not create opening hours table: " . $e->getMessage());
+    }
+    
+    try {
+        $stmt = $pdo->prepare("SELECT open_time, close_time FROM reservation_opening_hours WHERE date = ?");
+        $stmt->execute([$date]);
+        $hours = $stmt->fetch(PDO::FETCH_ASSOC);
+        
+        if ($hours) {
+            return [
+                'open_time' => substr($hours['open_time'], 0, 5), // HH:MM format
+                'close_time' => substr($hours['close_time'], 0, 5)
+            ];
+        }
+    } catch (PDOException $e) {
+        // Fallback if table doesn't exist or query fails
+        error_log("Could not fetch opening hours: " . $e->getMessage());
+    }
+    
+    // Default opening hours
+    return [
+        'open_time' => '16:00',
+        'close_time' => '22:00'
+    ];
+}
+
+/**
+ * Uloží otevírací hodiny pro daný den
+ * @param PDO $pdo Database connection
+ * @param string $date Date in Y-m-d format
+ * @param string $openTime Opening time in HH:MM format
+ * @param string $closeTime Closing time in HH:MM format
+ * @return array Result with success/error
+ */
+function saveOpeningHours($pdo, $date, $openTime, $closeTime) {
+    try {
+        // Ensure table exists
+        getOpeningHours($pdo, $date);
+        
+        $stmt = $pdo->prepare("
+            INSERT INTO reservation_opening_hours (date, open_time, close_time) 
+            VALUES (?, ?, ?)
+            ON DUPLICATE KEY UPDATE 
+                open_time = VALUES(open_time),
+                close_time = VALUES(close_time),
+                updated_at = CURRENT_TIMESTAMP
+        ");
+        $stmt->execute([$date, $openTime . ':00', $closeTime . ':00']);
+        
+        return ['ok' => true];
+    } catch (PDOException $e) {
+        return ['ok' => false, 'error' => 'Chyba při ukládání otevíracích hodin: ' . $e->getMessage()];
+    }
+}
+
+/**
+ * Validuje zda je rezervace v rámci otevíracích hodin
+ * @param DateTime $startDateTime Start datetime of reservation
+ * @param string $openTime Opening time in HH:MM format
+ * @param string $closeTime Closing time in HH:MM format  
+ * @param int $durationMinutes Duration of reservation in minutes
+ * @return array Result with success/error
+ */
+function validateWithinOpeningHours($startDateTime, $openTime, $closeTime, $durationMinutes = 120) {
+    $reservationTime = $startDateTime->format('H:i');
+    $endDateTime = clone $startDateTime;
+    $endDateTime->add(new DateInterval('PT' . $durationMinutes . 'M'));
+    $endTime = $endDateTime->format('H:i');
+    
+    if ($reservationTime < $openTime) {
+        return ['ok' => false, 'error' => 'Rezervace mimo otevírací dobu.'];
+    }
+    
+    if ($endTime > $closeTime) {
+        return ['ok' => false, 'error' => 'Rezervace by přesáhla zavírací dobu.'];
+    }
+    
+    return ['ok' => true];
+}
+
+/**
+ * Validuje že čas rezervace je v půlhodinových krocích
+ * @param string $time Time in H:i format
+ * @return array Result with success/error
+ */
+function validateThirtyMinuteSlot($time) {
+    $parts = explode(':', $time);
+    if (count($parts) !== 2) {
+        return ['ok' => false, 'error' => 'Neplatný formát času.'];
+    }
+    
+    $minute = intval($parts[1]);
+    if ($minute !== 0 && $minute !== 30) {
+        return ['ok' => false, 'error' => 'Začátek musí být v krocích po 30 minutách.'];
+    }
+    
+    return ['ok' => true];
 }
 
 /**
@@ -69,11 +188,24 @@ function createReservation($data) {
             }
         }
         
+        // Validate 30-minute time slots
+        $timeValidation = validateThirtyMinuteSlot($data['reservation_time']);
+        if (!$timeValidation['ok']) {
+            return $timeValidation;
+        }
+        
         // Create start and end datetime (2-hour blocks)
         $dateStr = $data['reservation_date'] . ' ' . $data['reservation_time'];
         $startDatetime = new DateTime($dateStr);
         $endDatetime = clone $startDatetime;
         $endDatetime->add(new DateInterval('PT2H'));
+        
+        // Get opening hours for the date and validate
+        $openingHours = getOpeningHours($pdo, $data['reservation_date']);
+        $hoursValidation = validateWithinOpeningHours($startDatetime, $openingHours['open_time'], $openingHours['close_time']);
+        if (!$hoursValidation['ok']) {
+            return $hoursValidation;
+        }
         
         // Check for collision if table_number is specified
         if (!empty($data['table_number'])) {

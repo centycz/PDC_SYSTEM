@@ -45,8 +45,23 @@ try {
             'id' => $result['id']
         ]);
     } else {
-        // Collision check - return 422 for business logic errors
-        if (strpos($result['error'], 'Kolize') !== false) {
+        // Check for validation errors - return 422 for business logic errors
+        $validationErrors = [
+            'Začátek musí být v krocích po 30 minutách.',
+            'Rezervace mimo otevírací dobu.',
+            'Rezervace by přesáhla zavírací dobu.',
+            'Kolize'
+        ];
+        
+        $isValidationError = false;
+        foreach ($validationErrors as $errorPattern) {
+            if (strpos($result['error'], $errorPattern) !== false) {
+                $isValidationError = true;
+                break;
+            }
+        }
+        
+        if ($isValidationError) {
             http_response_code(422);
         } else {
             http_response_code(400);
