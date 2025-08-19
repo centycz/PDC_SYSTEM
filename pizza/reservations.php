@@ -317,6 +317,44 @@ textarea { resize:vertical; }
     font-size:10px;
 }
 
+/* Capacity indicator classes */
+.slot-item.slot-cap-critical {
+    background:rgba(220,53,69,0.15);
+    border:2px solid rgba(220,53,69,0.3);
+    font-weight:700;
+}
+
+.slot-item.slot-cap-warning {
+    background:rgba(255,193,7,0.15);
+    border:2px solid rgba(255,193,7,0.3);
+    font-weight:600;
+}
+
+.slot-item.slot-cap-normal {
+    background:rgba(40,167,69,0.15);
+    border:2px solid rgba(40,167,69,0.3);
+}
+
+.slot-capacity {
+    color:#666;
+    font-size:9px;
+    margin-top:2px;
+}
+
+.slot-item.slot-cap-critical .slot-capacity {
+    color:#dc3545;
+    font-weight:600;
+}
+
+.slot-item.slot-cap-warning .slot-capacity {
+    color:#ffc107;
+    font-weight:600;
+}
+
+.slot-item.slot-cap-normal .slot-capacity {
+    color:#28a745;
+}
+
 .stats-toggle-container {
     text-align:center;
     margin:8px 0;
@@ -465,7 +503,15 @@ textarea { resize:vertical; }
                         </div>
                     </div>
                     <div class="stats-slots">
-                        <div class="slots-header">30minutové sloty:</div>
+                        <div class="slots-header">
+                            30minutové sloty:
+                            <div style="font-size:9px; margin-top:4px; color:#666;">
+                                <span style="color:#28a745;">■</span> &lt;40% 
+                                <span style="color:#ffc107;">■</span> 40-70% 
+                                <span style="color:#dc3545;">■</span> &gt;70%
+                                kapacita pecí (45🍕/h)
+                            </div>
+                        </div>
                         <div class="slots-list" id="slotsList">
                             <!-- Slots will be populated here -->
                         </div>
@@ -1139,11 +1185,37 @@ function updateStatsDisplay(data) {
     if (data.slots && data.slots.length > 0) {
         data.slots.forEach(slot => {
             const slotEl = document.createElement('div');
-            slotEl.className = `slot-item ${slot.persons > 0 ? 'has-persons' : ''}`;
-            slotEl.innerHTML = `
+            
+            // Base classes
+            let className = `slot-item ${slot.persons > 0 ? 'has-persons' : ''}`;
+            
+            // Add capacity indicator classes if capacity data is available
+            if (typeof slot.capacity_pct !== 'undefined') {
+                if (slot.capacity_pct >= 1.0) {
+                    className += ' slot-cap-critical';
+                } else if (slot.capacity_pct >= 0.70) {
+                    className += ' slot-cap-warning';
+                } else if (slot.capacity_pct >= 0.40) {
+                    className += ' slot-cap-normal';
+                }
+            }
+            
+            slotEl.className = className;
+            
+            // Build innerHTML content
+            let innerHTML = `
                 <div class="slot-time">${slot.time}</div>
                 <div class="slot-persons">${slot.persons} os.</div>
             `;
+            
+            // Add capacity information if available
+            if (typeof slot.capacity_pct !== 'undefined' && typeof slot.rolling_hour_pizzas !== 'undefined') {
+                const capacityText = `${Math.round(slot.capacity_pct * 100)}%`;
+                const pizzasText = `${slot.rolling_hour_pizzas}🍕/h`;
+                innerHTML += `<div class="slot-capacity">${capacityText} (${pizzasText})</div>`;
+            }
+            
+            slotEl.innerHTML = innerHTML;
             slotsList.appendChild(slotEl);
         });
     } else {
