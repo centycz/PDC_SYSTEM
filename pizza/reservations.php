@@ -387,6 +387,105 @@ $user_role = $_SESSION['user_role'];
             .timeline { grid-template-columns: 50px repeat(6, 80px); min-width: 530px; }
             .left-panel { padding: 20px; }
         }
+
+        /* Reservation Statistics Styles */
+        .stats-section {
+            margin-top: 15px;
+            padding: 15px;
+            background: #f8f9fa;
+            border-radius: 8px;
+            border: 1px solid #dee2e6;
+        }
+
+        .stats-pills {
+            display: flex;
+            gap: 10px;
+            margin-bottom: 10px;
+            flex-wrap: wrap;
+        }
+
+        .stats-pill {
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+            padding: 6px 12px;
+            border-radius: 20px;
+            font-size: 12px;
+            font-weight: 600;
+            display: flex;
+            align-items: center;
+            gap: 5px;
+            min-width: 80px;
+            justify-content: center;
+        }
+
+        .slots-toggle {
+            background: #6c757d;
+            color: white;
+            border: none;
+            padding: 6px 12px;
+            border-radius: 4px;
+            font-size: 12px;
+            cursor: pointer;
+            transition: background-color 0.2s;
+        }
+
+        .slots-toggle:hover {
+            background: #545b62;
+        }
+
+        .slots-toggle.active {
+            background: #28a745;
+        }
+
+        .slots-list {
+            display: none;
+            max-height: 200px;
+            overflow-y: auto;
+            border: 1px solid #ced4da;
+            border-radius: 4px;
+            background: white;
+            margin-top: 8px;
+        }
+
+        .slots-list.show {
+            display: block;
+        }
+
+        .slot-item {
+            padding: 6px 12px;
+            border-bottom: 1px solid #eee;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            font-size: 12px;
+        }
+
+        .slot-item:last-child {
+            border-bottom: none;
+        }
+
+        .slot-item.high-occupancy {
+            background: rgba(255, 193, 7, 0.2);
+            border-left: 3px solid #ffc107;
+        }
+
+        .slot-time {
+            font-weight: 600;
+            color: #495057;
+        }
+
+        .slot-persons {
+            background: #e9ecef;
+            padding: 2px 6px;
+            border-radius: 10px;
+            font-weight: 600;
+            color: #495057;
+        }
+
+        .slot-item.high-occupancy .slot-persons {
+            background: #ffc107;
+            color: #212529;
+        }
     </style>
 </head>
 <body>
@@ -490,6 +589,25 @@ $user_role = $_SESSION['user_role'];
                             <button type="button" onclick="saveOpeningHours()" style="padding: 5px 12px; background: #28a745; color: white; border: none; border-radius: 4px; font-size: 14px; cursor: pointer;">💾 Uložit</button>
                         </div>
                         <div id="opening-hours-status" style="margin-top: 8px; font-size: 12px;"></div>
+                    </div>
+                </div>
+
+                <!-- Reservation Statistics Section -->
+                <div class="stats-section">
+                    <div class="stats-pills">
+                        <div class="stats-pill">
+                            📊 Rezervace: <span id="stats-reservations">-</span>
+                        </div>
+                        <div class="stats-pill">
+                            👥 Osob: <span id="stats-persons">-</span>
+                        </div>
+                        <button class="slots-toggle" id="slots-toggle" onclick="toggleSlotsList()">
+                            📅 Obsazenost slotů
+                        </button>
+                    </div>
+                    
+                    <div class="slots-list" id="slots-list">
+                        <!-- Slot occupancy list will be populated by JavaScript -->
                     </div>
                 </div>
 
@@ -815,6 +933,8 @@ $user_role = $_SESSION['user_role'];
                 if (data.ok) {
                     currentReservations = data.data;
                     renderReservations();
+                    // Load stats after reservations are loaded
+                    await loadReservationStats();
                 } else {
                     showAlert('Chyba při načítání rezervací: ' + data.error, 'error', 'timeline-alert-container');
                 }
@@ -828,6 +948,83 @@ $user_role = $_SESSION['user_role'];
         async function loadTimeline() {
             currentDate = document.getElementById('timeline-date').value;
             await loadData();
+        }
+
+        // Reservation Statistics Functions
+        async function loadReservationStats() {
+            try {
+                // Use current opening hours if available, otherwise defaults
+                const openTime = currentOpeningHours?.open_time || '16:00';
+                const closeTime = currentOpeningHours?.close_time || '22:00';
+                
+                const response = await fetch(`/pizza/api/reservations-stats.php?date=${currentDate}&open_time=${openTime}&close_time=${closeTime}`);
+                const data = await response.json();
+                
+                if (data.ok) {
+                    updateStatsDisplay(data);
+                } else {
+                    console.error('Error loading stats:', data.error);
+                    resetStatsDisplay();
+                }
+            } catch (error) {
+                console.error('Error loading reservation stats:', error);
+                resetStatsDisplay();
+            }
+        }
+
+        function updateStatsDisplay(statsData) {
+            // Update pills
+            document.getElementById('stats-reservations').textContent = statsData.reservation_count;
+            document.getElementById('stats-persons').textContent = statsData.total_persons;
+            
+            // Update slots list
+            const slotsList = document.getElementById('slots-list');
+            slotsList.innerHTML = '';
+            
+            if (statsData.slots && statsData.slots.length > 0) {
+                statsData.slots.forEach(slot => {
+                    const slotItem = document.createElement('div');
+                    slotItem.className = 'slot-item';
+                    
+                    // Optional highlighting for high occupancy (threshold = 30)
+                    const PERSON_THRESHOLD = 30;
+                    if (slot.persons >= PERSON_THRESHOLD) {
+                        slotItem.classList.add('high-occupancy');
+                    }
+                    
+                    slotItem.innerHTML = `
+                        <span class="slot-time">${slot.time}</span>
+                        <span class="slot-persons">${slot.persons} osob</span>
+                    `;
+                    
+                    slotsList.appendChild(slotItem);
+                });
+            } else {
+                slotsList.innerHTML = '<div class="slot-item">Žádná data pro vybrané datum</div>';
+            }
+        }
+
+        function resetStatsDisplay() {
+            // Reset to zeros on error
+            document.getElementById('stats-reservations').textContent = '0';
+            document.getElementById('stats-persons').textContent = '0';
+            
+            const slotsList = document.getElementById('slots-list');
+            slotsList.innerHTML = '<div class="slot-item">Chyba při načítání dat</div>';
+        }
+
+        function toggleSlotsList() {
+            const slotsList = document.getElementById('slots-list');
+            const toggleButton = document.getElementById('slots-toggle');
+            
+            slotsList.classList.toggle('show');
+            toggleButton.classList.toggle('active');
+            
+            if (slotsList.classList.contains('show')) {
+                toggleButton.textContent = '📅 Skrýt obsazenost';
+            } else {
+                toggleButton.textContent = '📅 Obsazenost slotů';
+            }
         }
 
         function renderReservations() {
