@@ -477,6 +477,20 @@ $user_role = $_SESSION['user_role'];
                         <input type="date" id="timeline-date">
                         <button class="btn" onclick="loadTimeline()" style="width: auto; margin-bottom: 0; padding: 8px 16px;">🔄 Načíst</button>
                     </div>
+                    
+                    <!-- Opening Hours Form -->
+                    <div class="opening-hours-form" style="margin-top: 15px; padding: 15px; background: #f8f9fa; border-radius: 8px; border: 1px solid #dee2e6;">
+                        <div style="display: flex; align-items: center; gap: 15px; flex-wrap: wrap;">
+                            <label style="margin: 0; font-weight: 600; color: #495057;">🕐 Otevírací doba:</label>
+                            <div style="display: flex; align-items: center; gap: 5px;">
+                                <input type="time" id="open_time" style="padding: 5px 8px; border: 1px solid #ced4da; border-radius: 4px; font-size: 14px;" step="1800">
+                                <span>-</span>
+                                <input type="time" id="close_time" style="padding: 5px 8px; border: 1px solid #ced4da; border-radius: 4px; font-size: 14px;" step="1800">
+                            </div>
+                            <button type="button" onclick="saveOpeningHours()" style="padding: 5px 12px; background: #28a745; color: white; border: none; border-radius: 4px; font-size: 14px; cursor: pointer;">💾 Uložit</button>
+                        </div>
+                        <div id="opening-hours-status" style="margin-top: 8px; font-size: 12px;"></div>
+                    </div>
                 </div>
 
                 <div id="timeline-alert-container"></div>
@@ -515,6 +529,7 @@ $user_role = $_SESSION['user_role'];
         let tables = [];
         let currentReservations = [];
         let currentDate = new Date().toISOString().split('T')[0];
+        let currentOpeningHours = { open_time: '10:00', close_time: '23:00' };
 
         // Inicializace při načtení stránky
         document.addEventListener('DOMContentLoaded', function() {
@@ -522,14 +537,30 @@ $user_role = $_SESSION['user_role'];
         });
 
         function initializePage() {
-            generateTimeSlots();
-            loadTables();
             setDefaultDate();
-            generateTimeline();
-            loadTimeline();
+            loadData(); // Load everything in proper sequence
             
             // Event listener pro form
             document.getElementById('reservation-form').addEventListener('submit', handleFormSubmit);
+            
+            // Event listener for date change
+            document.getElementById('timeline-date').addEventListener('change', function() {
+                currentDate = this.value;
+                loadData();
+            });
+        }
+        
+        // Load all data in proper sequence: tables -> opening hours -> timeline -> reservations
+        async function loadData() {
+            try {
+                await loadTables();
+                await loadOpeningHours();
+                generateTimeline();
+                await loadReservations();
+            } catch (error) {
+                console.error('Error loading data:', error);
+                showAlert('Chyba při načítání dat', 'error', 'timeline-alert-container');
+            }
         }
 
         function setDefaultDate() {
@@ -538,31 +569,81 @@ $user_role = $_SESSION['user_role'];
             currentDate = today;
         }
 
-        function generateTimeSlots() {
+        function generateTimeSlots(openTime = null, closeTime = null) {
             const timeSelect = document.getElementById('reservation_time');
             timeSelect.innerHTML = '<option value="">Vyberte čas</option>';
             
+            // Use provided opening hours or defaults
+            const startHour = openTime ? parseInt(openTime.split(':')[0]) : openingHour;
+            const startMinute = openTime ? parseInt(openTime.split(':')[1]) : 0;
+            const endHour = closeTime ? parseInt(closeTime.split(':')[0]) : closingHour;
+            const endMinute = closeTime ? parseInt(closeTime.split(':')[1]) : 0;
+            
+            // Clear timeSlots array for timeline
+            timeSlots.length = 0;
+            
             for (let hour = openingHour; hour <= closingHour; hour++) {
-                for (let minute = 0; minute < 60; minute += 15) {
+                for (let minute = 0; minute < 60; minute += 30) {
+                    if (hour === closingHour && minute > 0) break;
+                    
                     const timeString = `${hour.toString().padStart(2, '0')}:${minute.toString().padStart(2, '0')}`;
                     
-                    // Přidej do timeSlots pro timeline
+                    // Add to timeSlots for timeline (all 30-minute slots)
                     timeSlots.push(timeString);
+                }
+            }
+            
+            // Generate reservation time options (30-minute intervals within opening hours)
+            for (let hour = startHour; hour <= endHour; hour++) {
+                for (let minute = 0; minute < 60; minute += 30) {
+                    // Skip if before opening time
+                    if (hour === startHour && minute < startMinute) continue;
                     
-                    // Přidej do selectu (pouze sudé hodiny pro rezervace)
-                    if (minute === 0 && hour <= 21) {
-                        const option = document.createElement('option');
-                        option.value = timeString;
-                        option.textContent = timeString;
-                        timeSelect.appendChild(option);
-                    }
+                    // Skip if too late (reservation needs 2 hours, so last slot is 2h before closing)
+                    if (hour > endHour - 2) break;
+                    if (hour === endHour - 2 && minute > endMinute) break;
+                    
+                    // Skip if after closing time  
+                    if (hour === endHour && minute >= endMinute) break;
+                    
+                    const timeString = `${hour.toString().padStart(2, '0')}:${minute.toString().padStart(2, '0')}`;
+                    const option = document.createElement('option');
+                    option.value = timeString;
+                    option.textContent = timeString;
+                    timeSelect.appendChild(option);
                 }
             }
         }
 
         async function loadTables() {
             try {
-                // Vygeneruj mock data pro stoly 1-10
+                // Load real tables from existing endpoint
+                const response = await fetch(`/pizza/api/restaurant-api.php?action=tables-with-reservations&date=${currentDate}`);
+                const data = await response.json();
+                
+                if (data.ok) {
+                    tables = data.data.map(table => ({
+                        table_number: table.table_number,
+                        table_code: table.table_code || `Stůl ${table.table_number}`,
+                        status: table.status || 'free'
+                    }));
+                    populateTableSelect();
+                } else {
+                    console.error('Failed to load tables:', data.error);
+                    // Fallback to mock data
+                    tables = [];
+                    for (let i = 1; i <= 10; i++) {
+                        tables.push({
+                            table_number: i,
+                            table_code: `Stůl ${i}`,
+                            status: 'free'
+                        });
+                    }
+                    populateTableSelect();
+                }
+            } catch (error) {
+                console.error('Chyba při načítání stolů:', error);
+                // Fallback to mock data in case of error
                 tables = [];
                 for (let i = 1; i <= 10; i++) {
                     tables.push({
@@ -571,10 +652,7 @@ $user_role = $_SESSION['user_role'];
                         status: 'free'
                     });
                 }
-                
                 populateTableSelect();
-            } catch (error) {
-                console.error('Chyba při načítání stolů:', error);
             }
         }
 
@@ -594,6 +672,12 @@ $user_role = $_SESSION['user_role'];
             const timeline = document.getElementById('timeline');
             timeline.innerHTML = '';
             
+            // Use current opening hours to determine timeline bounds
+            const openHour = parseInt(currentOpeningHours.open_time.split(':')[0]);
+            const openMin = parseInt(currentOpeningHours.open_time.split(':')[1]);
+            const closeHour = parseInt(currentOpeningHours.close_time.split(':')[0]);
+            const closeMin = parseInt(currentOpeningHours.close_time.split(':')[1]);
+            
             // Header řádek
             const timeHeader = document.createElement('div');
             timeHeader.className = 'time-header';
@@ -608,10 +692,15 @@ $user_role = $_SESSION['user_role'];
                 timeline.appendChild(tableHeader);
             });
             
-            // Časové sloty (každých 30 minut)
-            for (let hour = openingHour; hour <= closingHour; hour++) {
+            // Časové sloty (každých 30 minut) - pouze v otevírací době
+            for (let hour = openHour; hour <= closeHour; hour++) {
                 for (let minute = 0; minute < 60; minute += 30) {
-                    if (hour === closingHour && minute > 0) break;
+                    // Skip slots before opening time
+                    if (hour === openHour && minute < openMin) continue;
+                    
+                    // Skip slots after closing time
+                    if (hour === closeHour && minute >= closeMin) break;
+                    if (hour > closeHour) break;
                     
                     const timeString = `${hour.toString().padStart(2, '0')}:${minute.toString().padStart(2, '0')}`;
                     
@@ -632,13 +721,95 @@ $user_role = $_SESSION['user_role'];
                 }
             }
         }
-
-        async function loadTimeline() {
-            const date = document.getElementById('timeline-date').value;
-            currentDate = date;
+        
+        async function loadOpeningHours() {
+            try {
+                const response = await fetch(`/api/reservations/opening_hours.php?date=${currentDate}`);
+                const data = await response.json();
+                
+                if (data.ok) {
+                    currentOpeningHours = {
+                        open_time: data.open_time,
+                        close_time: data.close_time
+                    };
+                    
+                    // Update form fields
+                    document.getElementById('open_time').value = data.open_time;
+                    document.getElementById('close_time').value = data.close_time;
+                    
+                    // Regenerate time slots for reservation form
+                    generateTimeSlots(data.open_time, data.close_time);
+                } else {
+                    console.error('Failed to load opening hours:', data.error);
+                    showAlert('Upozornění: Načtení otevírací doby selhalo, používají se výchozí hodnoty.', 'warning', 'timeline-alert-container');
+                    
+                    // Use defaults
+                    currentOpeningHours = { open_time: '10:00', close_time: '23:00' };
+                    document.getElementById('open_time').value = '10:00';
+                    document.getElementById('close_time').value = '23:00';
+                    generateTimeSlots('10:00', '23:00');
+                }
+            } catch (error) {
+                console.error('Error loading opening hours:', error);
+                showAlert('Upozornění: Načtení otevírací doby selhalo, používají se výchozí hodnoty.', 'warning', 'timeline-alert-container');
+                
+                // Use defaults
+                currentOpeningHours = { open_time: '10:00', close_time: '23:00' };
+                document.getElementById('open_time').value = '10:00';
+                document.getElementById('close_time').value = '23:00';
+                generateTimeSlots('10:00', '23:00');
+            }
+        }
+        
+        async function saveOpeningHours() {
+            const openTime = document.getElementById('open_time').value;
+            const closeTime = document.getElementById('close_time').value;
+            
+            if (!openTime || !closeTime) {
+                showAlert('Zadejte otevírací i zavírací čas', 'error', 'opening-hours-status');
+                return;
+            }
+            
+            if (openTime >= closeTime) {
+                showAlert('Otevírací čas musí být dříve než zavírací', 'error', 'opening-hours-status');
+                return;
+            }
             
             try {
-                const response = await fetch(`/api/reservations/list.php?date=${date}`);
+                const response = await fetch('/api/reservations/opening_hours.php', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json'
+                    },
+                    body: JSON.stringify({
+                        date: currentDate,
+                        open_time: openTime,
+                        close_time: closeTime
+                    })
+                });
+                
+                const data = await response.json();
+                
+                if (data.ok) {
+                    showAlert('Otevírací doba byla uložena', 'success', 'opening-hours-status');
+                    currentOpeningHours = { open_time: openTime, close_time: closeTime };
+                    
+                    // Regenerate timeline and time slots
+                    generateTimeSlots(openTime, closeTime);
+                    generateTimeline();
+                    await loadReservations();
+                } else {
+                    showAlert('Chyba při ukládání: ' + data.error, 'error', 'opening-hours-status');
+                }
+            } catch (error) {
+                console.error('Error saving opening hours:', error);
+                showAlert('Chyba při ukládání otevírací doby', 'error', 'opening-hours-status');
+            }
+        }
+
+        async function loadReservations() {
+            try {
+                const response = await fetch(`/api/reservations/list.php?date=${currentDate}`);
                 const data = await response.json();
                 
                 if (data.ok) {
@@ -648,9 +819,15 @@ $user_role = $_SESSION['user_role'];
                     showAlert('Chyba při načítání rezervací: ' + data.error, 'error', 'timeline-alert-container');
                 }
             } catch (error) {
-                console.error('Chyba při načítání časové osy:', error);
-                showAlert('Chyba při načítání časové osy', 'error', 'timeline-alert-container');
+                console.error('Chyba při načítání rezervací:', error);
+                showAlert('Chyba při načítání rezervací', 'error', 'timeline-alert-container');
             }
+        }
+        
+        // Keep the original loadTimeline function for the reload button
+        async function loadTimeline() {
+            currentDate = document.getElementById('timeline-date').value;
+            await loadData();
         }
 
         function renderReservations() {
