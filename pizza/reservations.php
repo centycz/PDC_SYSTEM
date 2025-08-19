@@ -220,6 +220,108 @@ textarea { resize:vertical; }
 
 #table-availability-hint { min-height:14px; }
 
+/* =========================
+   STATISTICS PANEL STYLES
+========================= */
+.stats-panel {
+    background:#f8f9fa;
+    border:1px solid #dee2e6;
+    border-radius:10px;
+    padding:16px;
+    margin:12px 0;
+}
+
+.stats-header {
+    display:flex;
+    align-items:center;
+    font-weight:600;
+    color:#444;
+    font-size:14px;
+    margin-bottom:12px;
+}
+
+.stats-content {
+    display:flex;
+    flex-direction:column;
+    gap:16px;
+}
+
+.stats-summary {
+    display:flex;
+    gap:16px;
+}
+
+.stat-item {
+    flex:1;
+    background:rgba(102,126,234,0.1);
+    border-radius:8px;
+    padding:12px;
+    text-align:center;
+    min-width:80px;
+}
+
+.stat-number {
+    font-size:1.8em;
+    font-weight:bold;
+    color:#667eea;
+    line-height:1.2;
+}
+
+.stat-label {
+    font-size:0.85em;
+    color:#666;
+    margin-top:4px;
+}
+
+.stats-slots {
+    border-top:1px solid #e9ecef;
+    padding-top:12px;
+}
+
+.slots-header {
+    font-weight:600;
+    color:#444;
+    font-size:13px;
+    margin-bottom:8px;
+}
+
+.slots-list {
+    display:grid;
+    grid-template-columns:repeat(auto-fill, minmax(90px, 1fr));
+    gap:8px;
+    max-height:120px;
+    overflow-y:auto;
+}
+
+.slot-item {
+    background:rgba(102,126,234,0.08);
+    border-radius:6px;
+    padding:6px 8px;
+    text-align:center;
+    font-size:11px;
+    transition:background-color 0.2s;
+}
+
+.slot-item.has-persons {
+    background:rgba(102,126,234,0.15);
+    font-weight:600;
+}
+
+.slot-time {
+    font-weight:bold;
+    color:#444;
+}
+
+.slot-persons {
+    color:#667eea;
+    font-size:10px;
+}
+
+.stats-toggle-container {
+    text-align:center;
+    margin:8px 0;
+}
+
 @media (max-width:1200px){
     .main-content { flex-direction:column; height:auto; }
     .left-panel { width:100%; border-right:none; border-bottom:1px solid #e9ecef; }
@@ -343,6 +445,36 @@ textarea { resize:vertical; }
                 <div class="legend-item"><span class="legend-color" style="background:#9cd6ff; border-color:#1594c1;"></span> Posazení</div>
                 <div class="legend-item"><span class="legend-color" style="background:#c9ccd1; border-color:#7d858d;"></span> Dokonč.</div>
                 <div class="legend-item"><span class="legend-color" style="background:#f5b2b0; border-color:#d95b57;"></span> Zrušeno</div>
+            </div>
+
+            <!-- Statistics Panel -->
+            <div class="stats-panel" id="statsPanel" style="display: none;">
+                <div class="stats-header">
+                    📊 Statistiky pro <span id="statsDate">-</span>
+                    <button type="button" class="btn-outline small-btn" onclick="toggleStatsPanel()" style="margin-left: auto; padding: 4px 8px; font-size: 11px;">Skrýt</button>
+                </div>
+                <div class="stats-content">
+                    <div class="stats-summary">
+                        <div class="stat-item">
+                            <div class="stat-number" id="totalReservations">-</div>
+                            <div class="stat-label">Rezervace</div>
+                        </div>
+                        <div class="stat-item">
+                            <div class="stat-number" id="totalPersons">-</div>
+                            <div class="stat-label">Celkem osob</div>
+                        </div>
+                    </div>
+                    <div class="stats-slots">
+                        <div class="slots-header">30minutové sloty:</div>
+                        <div class="slots-list" id="slotsList">
+                            <!-- Slots will be populated here -->
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <div class="stats-toggle-container">
+                <button type="button" class="btn-outline small-btn" onclick="toggleStatsPanel()" id="showStatsBtn">📊 Zobrazit statistiky</button>
             </div>
 
             <div id="timeline-alert-container"></div>
@@ -972,6 +1104,66 @@ function clearAlert(containerId) {
 
 async function loadTimeline() {
     await loadData();
+    await loadStats();
+}
+
+/* =========================
+   STATISTICS FUNCTIONS
+========================= */
+let statsVisible = false;
+
+async function loadStats() {
+    try {
+        const resp = await fetch(`/api/reservations/stats.php?date=${currentDate}`);
+        const data = await resp.json();
+        
+        if (data.ok) {
+            updateStatsDisplay(data);
+        } else {
+            console.warn('Error loading stats:', data.error);
+        }
+    } catch (e) {
+        console.warn('Error fetching stats:', e);
+    }
+}
+
+function updateStatsDisplay(data) {
+    document.getElementById('statsDate').textContent = data.date;
+    document.getElementById('totalReservations').textContent = data.reservation_count || 0;
+    document.getElementById('totalPersons').textContent = data.total_persons || 0;
+    
+    // Update slots
+    const slotsList = document.getElementById('slotsList');
+    slotsList.innerHTML = '';
+    
+    if (data.slots && data.slots.length > 0) {
+        data.slots.forEach(slot => {
+            const slotEl = document.createElement('div');
+            slotEl.className = `slot-item ${slot.persons > 0 ? 'has-persons' : ''}`;
+            slotEl.innerHTML = `
+                <div class="slot-time">${slot.time}</div>
+                <div class="slot-persons">${slot.persons} os.</div>
+            `;
+            slotsList.appendChild(slotEl);
+        });
+    } else {
+        slotsList.innerHTML = '<div style="grid-column: 1 / -1; text-align: center; color: #666; font-size: 11px;">Žádná data</div>';
+    }
+}
+
+function toggleStatsPanel() {
+    const panel = document.getElementById('statsPanel');
+    const showBtn = document.getElementById('showStatsBtn');
+    
+    statsVisible = !statsVisible;
+    
+    if (statsVisible) {
+        panel.style.display = 'block';
+        showBtn.style.display = 'none';
+    } else {
+        panel.style.display = 'none';
+        showBtn.style.display = 'inline-block';
+    }
 }
 
 /* =========================
@@ -984,6 +1176,7 @@ window.cancelReservation = cancelReservation;
 window.startEditReservation = startEditReservation;
 window.cancelEdit = cancelEdit;
 window.deleteEditingReservation = deleteEditingReservation;
+window.toggleStatsPanel = toggleStatsPanel;
 </script>
 </body>
 </html>
