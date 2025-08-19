@@ -112,6 +112,7 @@ function validateWithinOpeningHours($startDateTime, $openTime, $closeTime, $dura
         return ['ok' => false, 'error' => 'Rezervace mimo otevírací dobu.'];
     }
     
+    // The reservation end time must be <= closing time (not >)
     if ($endTime > $closeTime) {
         return ['ok' => false, 'error' => 'Rezervace by přesáhla zavírací dobu.'];
     }
@@ -125,12 +126,30 @@ function validateWithinOpeningHours($startDateTime, $openTime, $closeTime, $dura
  * @return array Result with success/error
  */
 function validateThirtyMinuteSlot($time) {
+    // Validate time format first
+    if (!preg_match('/^\d{1,2}:\d{2}$/', $time)) {
+        return ['ok' => false, 'error' => 'Neplatný formát času.'];
+    }
+    
     $parts = explode(':', $time);
     if (count($parts) !== 2) {
         return ['ok' => false, 'error' => 'Neplatný formát času.'];
     }
     
+    $hour = intval($parts[0]);
     $minute = intval($parts[1]);
+    
+    // Validate hour range (0-23)
+    if ($hour < 0 || $hour > 23) {
+        return ['ok' => false, 'error' => 'Neplatná hodina.'];
+    }
+    
+    // Validate minute range (0-59)
+    if ($minute < 0 || $minute > 59) {
+        return ['ok' => false, 'error' => 'Neplatná minuta.'];
+    }
+    
+    // Check 30-minute intervals
     if ($minute !== 0 && $minute !== 30) {
         return ['ok' => false, 'error' => 'Začátek musí být v krocích po 30 minutách.'];
     }
