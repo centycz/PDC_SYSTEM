@@ -160,10 +160,10 @@ function createReservation($data) {
         
         // Trigger dough recalculation if this reservation is for today
         try {
-    triggerDoughRecalcIfToday($data['reservation_date']);
-} catch (Throwable $e) {
-    error_log("Trigger recalc after createReservation failed: ".$e->getMessage());
-}
+            triggerDoughRecalcIfToday($data['reservation_date']);
+        } catch (Throwable $e) {
+            error_log("Trigger recalc after createReservation failed: " . $e->getMessage());
+        }
         
         return ['ok' => true, 'id' => $reservationId];
         
@@ -201,7 +201,11 @@ function updateStatus($id, $status) {
         
         // Trigger dough recalculation if this reservation is for today
         if ($reservationDate) {
-            triggerDoughRecalcIfToday($reservationDate);
+            try {
+                triggerDoughRecalcIfToday($reservationDate);
+            } catch (Throwable $e) {
+                error_log("Trigger recalc after updateStatus failed: " . $e->getMessage());
+            }
         }
         
         return ['ok' => true];
@@ -227,13 +231,13 @@ function seatReservation($id) {
         $reservation = $stmt->fetch(PDO::FETCH_ASSOC);
         
         if (!$reservation) {
-            $pdo->rollback();
+            if ($pdo->inTransaction()) $pdo->rollBack();
             return ['ok' => false, 'error' => 'Rezervace nenalezena'];
         }
         
         // Check if reservation can be seated
         if (!in_array($reservation['status'], ['pending', 'confirmed'])) {
-            $pdo->rollback();
+            if ($pdo->inTransaction()) $pdo->rollBack();
             return ['ok' => false, 'error' => 'Rezervaci nelze posadit ze stavu: ' . $reservation['status']];
         }
         
@@ -265,13 +269,19 @@ function seatReservation($id) {
         
         $pdo->commit();
         
+        error_log("Seated reservation $id for table {$reservation['table_number']}");
+        
         // Trigger dough recalculation if this reservation is for today
-        triggerDoughRecalcIfToday($reservation['reservation_date']);
+        try {
+            triggerDoughRecalcIfToday($reservation['reservation_date']);
+        } catch (Throwable $e) {
+            error_log("Trigger recalc after seatReservation failed: " . $e->getMessage());
+        }
         
         return ['ok' => true];
         
     } catch (Exception $e) {
-        $pdo->rollback();
+        if ($pdo->inTransaction()) $pdo->rollBack();
         return ['ok' => false, 'error' => $e->getMessage()];
     }
 }
@@ -292,13 +302,13 @@ function finishReservation($id) {
         $reservation = $stmt->fetch(PDO::FETCH_ASSOC);
         
         if (!$reservation) {
-            $pdo->rollback();
+            if ($pdo->inTransaction()) $pdo->rollBack();
             return ['ok' => false, 'error' => 'Rezervace nenalezena'];
         }
         
         // Check if reservation can be finished
         if ($reservation['status'] !== 'seated') {
-            $pdo->rollback();
+            if ($pdo->inTransaction()) $pdo->rollBack();
             return ['ok' => false, 'error' => 'Dokončit lze pouze rezervaci ve stavu "seated"'];
         }
         
@@ -306,26 +316,26 @@ function finishReservation($id) {
         $stmt = $pdo->prepare("UPDATE reservations SET status = 'finished', updated_at = NOW() WHERE id = ?");
         $stmt->execute([$id]);
         
-        // Update restaurant_tables and close table_session if table is assigned
+        // Release table and session if table is assigned
         if ($reservation['table_number']) {
-            // Close active table session
-            $stmt = $pdo->prepare("UPDATE table_sessions SET is_active = 0, end_time = NOW() WHERE table_number = ? AND is_active = 1");
-            $stmt->execute([$reservation['table_number']]);
-            
-            // Set table to cleaning status
-            $stmt = $pdo->prepare("UPDATE restaurant_tables SET status = 'to_clean', session_start = NULL WHERE table_number = ?");
-            $stmt->execute([$reservation['table_number']]);
+            releaseTableAndSession($pdo, $reservation['table_number'], true); // true = set to 'to_clean'
         }
         
         $pdo->commit();
         
+        error_log("Finished reservation $id, table {$reservation['table_number']} set to 'to_clean'");
+        
         // Trigger dough recalculation if this reservation is for today
-        triggerDoughRecalcIfToday($reservation['reservation_date']);
+        try {
+            triggerDoughRecalcIfToday($reservation['reservation_date']);
+        } catch (Throwable $e) {
+            error_log("Trigger recalc after finishReservation failed: " . $e->getMessage());
+        }
         
         return ['ok' => true];
         
     } catch (Exception $e) {
-        $pdo->rollback();
+        if ($pdo->inTransaction()) $pdo->rollBack();
         return ['ok' => false, 'error' => $e->getMessage()];
     }
 }
@@ -338,18 +348,21 @@ function finishReservation($id) {
 function cancelReservation($id) {
     try {
         $pdo = getReservationDb();
+        $pdo->beginTransaction();
         
-        // Get reservation details including date
-        $stmt = $pdo->prepare("SELECT status, reservation_date FROM reservations WHERE id = ?");
+        // Get full reservation details 
+        $stmt = $pdo->prepare("SELECT * FROM reservations WHERE id = ?");
         $stmt->execute([$id]);
         $reservation = $stmt->fetch(PDO::FETCH_ASSOC);
         
         if (!$reservation) {
+            if ($pdo->inTransaction()) $pdo->rollBack();
             return ['ok' => false, 'error' => 'Rezervace nenalezena'];
         }
         
         // Check if reservation can be cancelled (not already finished)  
         if (in_array($reservation['status'], ['finished', 'cancelled', 'no_show'])) {
+            if ($pdo->inTransaction()) $pdo->rollBack();
             return ['ok' => false, 'error' => 'Rezervaci nelze zrušit ze stavu: ' . $reservation['status']];
         }
         
@@ -357,12 +370,46 @@ function cancelReservation($id) {
         $stmt = $pdo->prepare("UPDATE reservations SET status = 'cancelled', updated_at = NOW() WHERE id = ?");
         $stmt->execute([$id]);
         
+        // Release table and session if reservation was seated or has active session
+        if ($reservation['table_number']) {
+            if ($reservation['status'] === 'seated') {
+                // Release seated reservation - set table to 'to_clean' 
+                releaseTableAndSession($pdo, $reservation['table_number'], true);
+                error_log("Cancelled seated reservation $id, table {$reservation['table_number']} set to 'to_clean'");
+            } else {
+                // Check if there's an active session without active orders
+                $stmt = $pdo->prepare("
+                    SELECT COUNT(*) as active_orders 
+                    FROM table_sessions ts
+                    LEFT JOIN orders o ON ts.table_number = o.table_number AND o.status NOT IN ('completed', 'cancelled')
+                    WHERE ts.table_number = ? AND ts.is_active = 1
+                ");
+                $stmt->execute([$reservation['table_number']]);
+                $result = $stmt->fetch(PDO::FETCH_ASSOC);
+                
+                if ($result && $result['active_orders'] == 0) {
+                    // No active orders, safe to release table
+                    releaseTableAndSession($pdo, $reservation['table_number'], false); // false = set to 'free'
+                    error_log("Cancelled reservation $id, table {$reservation['table_number']} released (no active orders)");
+                }
+            }
+        }
+        
+        $pdo->commit();
+        
+        error_log("Cancelled reservation $id (was {$reservation['status']})");
+        
         // Trigger dough recalculation if this reservation is for today
-        triggerDoughRecalcIfToday($reservation['reservation_date']);
+        try {
+            triggerDoughRecalcIfToday($reservation['reservation_date']);
+        } catch (Throwable $e) {
+            error_log("Trigger recalc after cancelReservation failed: " . $e->getMessage());
+        }
         
         return ['ok' => true];
         
     } catch (Exception $e) {
+        if ($pdo->inTransaction()) $pdo->rollBack();
         return ['ok' => false, 'error' => $e->getMessage()];
     }
 }
@@ -551,6 +598,146 @@ function getSeatedReservationForTable($tableNumber, $now = null) {
     } catch (Exception $e) {
         error_log("Error finding seated reservation for table $tableNumber: " . $e->getMessage());
         return null;
+    }
+}
+
+/**
+ * Centralized helper to release table and session
+ * @param PDO $pdo Database connection
+ * @param int $tableNumber Table number to release
+ * @param bool $setToClean Set table status to 'to_clean' instead of 'free'
+ * @return bool Success status
+ */
+function releaseTableAndSession($pdo, $tableNumber, $setToClean = false) {
+    try {
+        error_log("Releasing table $tableNumber, setToClean=" . ($setToClean ? 'true' : 'false'));
+        
+        // Close active table session
+        $stmt = $pdo->prepare("UPDATE table_sessions SET is_active = 0, end_time = NOW() WHERE table_number = ? AND is_active = 1");
+        $stmt->execute([$tableNumber]);
+        
+        // Set table status
+        $newStatus = $setToClean ? 'to_clean' : 'free';
+        $stmt = $pdo->prepare("UPDATE restaurant_tables SET status = ?, session_start = NULL WHERE table_number = ?");
+        $stmt->execute([$newStatus, $tableNumber]);
+        
+        return true;
+    } catch (Exception $e) {
+        error_log("Error releasing table $tableNumber: " . $e->getMessage());
+        return false;
+    }
+}
+
+/**
+ * Update reservation time/date with proper validation
+ * @param int $id Reservation ID
+ * @param string $newDate New date in Y-m-d format
+ * @param string $newTime New time in H:i format
+ * @param int|null $newTableNumber Optional new table number
+ * @return array Result with ok status and details
+ */
+function updateReservationTime($id, $newDate, $newTime, $newTableNumber = null) {
+    try {
+        $pdo = getReservationDb();
+        
+        // Validate time format and 30-minute intervals
+        if (!preg_match('/^\d{1,2}:\d{2}$/', $newTime)) {
+            return ['ok' => false, 'error' => 'Neplatný formát času'];
+        }
+        
+        $timeParts = explode(':', $newTime);
+        $minutes = intval($timeParts[1]);
+        if ($minutes !== 0 && $minutes !== 30) {
+            return ['ok' => false, 'error' => 'Rezervace je možná pouze na celé a půl hodiny'];
+        }
+        
+        // Validate opening hours
+        $openingHours = getOpeningHours($pdo, $newDate);
+        if (!validateWithinOpeningHours($newTime, $openingHours['open_time'], $openingHours['close_time'])) {
+            return ['ok' => false, 'error' => 'Rezervace mimo otevírací dobu (' . $openingHours['open_time'] . '-' . $openingHours['close_time'] . ')'];
+        }
+        
+        // Get current reservation
+        $stmt = $pdo->prepare("SELECT * FROM reservations WHERE id = ?");
+        $stmt->execute([$id]);
+        $reservation = $stmt->fetch(PDO::FETCH_ASSOC);
+        
+        if (!$reservation) {
+            return ['ok' => false, 'error' => 'Rezervace nenalezena'];
+        }
+        
+        // Create new start and end datetime (2-hour blocks)
+        $dateStr = $newDate . ' ' . $newTime;
+        $startDatetime = new DateTime($dateStr);
+        $endDatetime = clone $startDatetime;
+        $endDatetime->add(new DateInterval('PT2H'));
+        
+        // Determine table number to check (new or current)
+        $tableToCheck = $newTableNumber ?? $reservation['table_number'];
+        
+        // Check for collision if table is specified, excluding current reservation
+        if ($tableToCheck) {
+            $collision = findCollision($pdo, $startDatetime, $endDatetime, $tableToCheck, $id);
+            if ($collision) {
+                return ['ok' => false, 'error' => 'Kolize s existující rezervací na stole ' . $tableToCheck . ' v čase ' . $collision['reservation_time']];
+            }
+        }
+        
+        // Update reservation
+        $updateData = [
+            'reservation_date' => $newDate,
+            'reservation_time' => $newTime,
+            'start_datetime' => $startDatetime->format('Y-m-d H:i:s'),
+            'end_datetime' => $endDatetime->format('Y-m-d H:i:s'),
+            'updated_at' => date('Y-m-d H:i:s')
+        ];
+        
+        if ($newTableNumber !== null) {
+            $updateData['table_number'] = $newTableNumber;
+        }
+        
+        $setClause = [];
+        $params = [];
+        foreach ($updateData as $field => $value) {
+            $setClause[] = "$field = ?";
+            $params[] = $value;
+        }
+        $params[] = $id; // for WHERE clause
+        
+        $sql = "UPDATE reservations SET " . implode(', ', $setClause) . " WHERE id = ?";
+        $stmt = $pdo->prepare($sql);
+        $stmt->execute($params);
+        
+        if ($stmt->rowCount() === 0) {
+            return ['ok' => false, 'error' => 'Rezervace nebyla aktualizována'];
+        }
+        
+        error_log("Updated reservation $id: date=$newDate, time=$newTime, table=" . ($newTableNumber ?? $reservation['table_number']));
+        
+        // Trigger dough recalculation if reservation is confirmed/seated and date is today
+        if (in_array($reservation['status'], ['confirmed', 'seated']) && $newDate === date('Y-m-d')) {
+            try {
+                triggerDoughRecalcIfToday($newDate);
+            } catch (Throwable $e) {
+                error_log("Trigger recalc after updateReservationTime failed: " . $e->getMessage());
+            }
+        }
+        
+        return [
+            'ok' => true,
+            'updated' => [
+                'id' => $id,
+                'date' => $newDate,
+                'time' => $newTime,
+                'table_number' => $newTableNumber ?? $reservation['table_number'],
+                'start_datetime' => $startDatetime->format('Y-m-d H:i:s'),
+                'end_datetime' => $endDatetime->format('Y-m-d H:i:s')
+            ]
+        ];
+        
+    } catch (Exception $e) {
+        error_log("Error updating reservation time: " . $e->getMessage());
+        return ['ok' => false, 'error' => $e->getMessage()];
     }
 }
 
