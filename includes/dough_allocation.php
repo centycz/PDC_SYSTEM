@@ -2,14 +2,23 @@
 /**
  * Automated Dough Allocation System
  * Calculates reserved vs walk-in pizza allocation based on reservations
+ *
+ * Logika:
+ *  - Rezervované těsto = součet ceil(party_size * DOUGH_FACTOR) pro všechny dnešní
+ *    rezervace ve stavech ('confirmed','seated') (chráníme pizzy pro potvrzené + již usazené)
+ *  - Walk-in = pizza_total - pizza_reserved (>=0)
+ *  - DOUGH_FACTOR lze upravit podle zkušeností (default 1.2 pro konzistenci s dashboard odhadem)
  */
 
-// Configuration constants
-define('DOUGH_FACTOR', 0.95);
-define('DOUGH_MIN_PER_RES', 1);
+if (!defined('DOUGH_FACTOR')) {
+    define('DOUGH_FACTOR', 1.2); // Pokud chceš starých 0.95, změň zde
+}
+if (!defined('DOUGH_MIN_PER_RES')) {
+    define('DOUGH_MIN_PER_RES', 1);
+}
 
 /**
- * Get database connection for pizza orders (reuse existing function if available)
+ * DB připojení pro tabulky v pizza_orders
  */
 function getPizzaOrdersDb() {
     static $pdo = null;
@@ -26,10 +35,9 @@ function getPizzaOrdersDb() {
 }
 
 /**
- * Recalculates daily dough allocation based on current reservations
- * @param string $date Date in Y-m-d format
- * @param bool $createIfMissing Create daily_supplies record if missing
- * @return array Result with success/error and allocation numbers
+ * Přepočet denní alokace těsta
+ * @param string $date Y-m-d
+ * @param bool $createIfMissing vytvořit záznam pokud neexistuje
  */
 function recalcDailyDoughAllocation($date, $createIfMissing = true) {
     try {
@@ -41,7 +49,9 @@ function recalcDailyDoughAllocation($date, $createIfMissing = true) {
         
         if (!$dailySupplies && $createIfMissing) {
             $stmt = $pdo->prepare("
-                INSERT INTO daily_supplies (date, pizza_total, pizza_reserved, pizza_walkin, burrata_total, burrata_reserved, burrata_walkin, updated_by, updated_at) 
+                INSERT INTO daily_supplies (date, pizza_total, pizza_reserved, pizza_walkin,
+                                            burrata_total, burrata_reserved, burrata_walkin,
+                                            updated_by, updated_at)
                 VALUES (?, 120, 0, 120, 15, 12, 3, 'AUTO-ALLOC', NOW())
             ");
             $stmt->execute([$date]);
@@ -54,37 +64,35 @@ function recalcDailyDoughAllocation($date, $createIfMissing = true) {
             return ['ok' => false, 'error' => 'Daily supplies record not found for date: ' . $date];
         }
         
+        // Bereme confirmed + seated
         $stmt = $pdo->prepare("
-            SELECT id, party_size 
-            FROM reservations 
-            WHERE reservation_date = ? 
-            AND status IN ('confirmed', 'seated')
+            SELECT id, party_size
+            FROM reservations
+            WHERE reservation_date = ?
+              AND status IN ('confirmed','seated')
         ");
         $stmt->execute([$date]);
         $reservations = $stmt->fetchAll(PDO::FETCH_ASSOC);
         
         $totalReservedDough = 0;
-        foreach ($reservations as $reservation) {
-            $partySize = (int)$reservation['party_size'];
-            $doughForReservation = max(DOUGH_MIN_PER_RES, ceil($partySize * DOUGH_FACTOR));
-            $totalReservedDough += $doughForReservation;
+        foreach ($reservations as $res) {
+            $ps = (int)$res['party_size'];
+            $dough = max(DOUGH_MIN_PER_RES, ceil($ps * DOUGH_FACTOR));
+            $totalReservedDough += $dough;
         }
         
-        $pizzaTotal = (int)$dailySupplies['pizza_total'];
-        $pizzaReserved = min($totalReservedDough, $pizzaTotal);
-        $pizzaWalkin = $pizzaTotal - $pizzaReserved;
+        $pizzaTotal    = (int)$dailySupplies['pizza_total'];
+        $pizzaReserved = min($pizzaTotal, $totalReservedDough);
+        $pizzaWalkin   = max(0, $pizzaTotal - $pizzaReserved);
         
         $stmt = $pdo->prepare("
-            UPDATE daily_supplies 
-            SET pizza_reserved = ?, pizza_walkin = ?, updated_by = 'AUTO-ALLOC', updated_at = NOW()
-            WHERE date = ?
+            UPDATE daily_supplies
+               SET pizza_reserved = ?, pizza_walkin = ?, updated_by = 'AUTO-ALLOC', updated_at = NOW()
+             WHERE date = ?
         ");
         $stmt->execute([$pizzaReserved, $pizzaWalkin, $date]);
-
-        // Voliteln� jednoduch� log (m��e� odstranit po odlad�n�):
-        if (function_exists('error_log')) {
-            error_log("[DOUGH RECALC] date=$date reservations=" . count($reservations) . " reserved=$pizzaReserved walkin=$pizzaWalkin totalReservedDough=$totalReservedDough");
-        }
+        
+        error_log("[DOUGH RECALC] date=$date reservations=".count($reservations)." reserved=$pizzaReserved walkin=$pizzaWalkin factor=".DOUGH_FACTOR);
         
         return [
             'ok' => true,
@@ -93,15 +101,14 @@ function recalcDailyDoughAllocation($date, $createIfMissing = true) {
             'pizza_reserved' => $pizzaReserved,
             'pizza_walkin' => $pizzaWalkin,
             'reservations_count' => count($reservations),
-            'total_reserved_dough' => $totalReservedDough
+            'total_reserved_dough' => $totalReservedDough,
+            'factor' => DOUGH_FACTOR
         ];
         
     } catch (Exception $e) {
-        error_log("[DOUGH RECALC ERROR] " . $e->getMessage());
+        error_log("[DOUGH RECALC ERROR] ".$e->getMessage());
         return ['ok' => false, 'error' => $e->getMessage()];
     }
 }
 
-// POZOR: odstraněna duplicitní triggerDoughRecalcIfToday (je v reservations_lib.php)
-// Duplicitní funkce byla odstraněna, aby se předešlo fatal redeclare error.
-// Kanonická implementace je v reservations_lib.php a je použita odtamtud.
+// triggerDoughRecalcIfToday je definována v reservations_lib.php

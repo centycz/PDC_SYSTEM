@@ -636,115 +636,163 @@ function releaseTableAndSession($pdo, $tableNumber, $setToClean = false) {
  * @param int|null $newTableNumber Optional new table number
  * @return array Result with ok status and details
  */
-function updateReservationTime($id, $newDate, $newTime, $newTableNumber = null) {
+function updateReservation($id, $data) {
     try {
         $pdo = getReservationDb();
-        
-        // Validate time format and 30-minute intervals
-        if (!preg_match('/^\d{1,2}:\d{2}$/', $newTime)) {
-            return ['ok' => false, 'error' => 'Neplatný formát času'];
-        }
-        
-        $timeParts = explode(':', $newTime);
-        $minutes = intval($timeParts[1]);
-        if ($minutes !== 0 && $minutes !== 30) {
-            return ['ok' => false, 'error' => 'Rezervace je možná pouze na celé a půl hodiny'];
-        }
-        
-        // Validate opening hours
-        $openingHours = getOpeningHours($pdo, $newDate);
-        if (!validateWithinOpeningHours($newTime, $openingHours['open_time'], $openingHours['close_time'])) {
-            return ['ok' => false, 'error' => 'Rezervace mimo otevírací dobu (' . $openingHours['open_time'] . '-' . $openingHours['close_time'] . ')'];
-        }
-        
-        // Get current reservation
+
+        // Načti původní
         $stmt = $pdo->prepare("SELECT * FROM reservations WHERE id = ?");
         $stmt->execute([$id]);
-        $reservation = $stmt->fetch(PDO::FETCH_ASSOC);
-        
-        if (!$reservation) {
+        $orig = $stmt->fetch(PDO::FETCH_ASSOC);
+        if (!$orig) {
             return ['ok' => false, 'error' => 'Rezervace nenalezena'];
         }
-        
-        // Create new start and end datetime (2-hour blocks)
-        $dateStr = $newDate . ' ' . $newTime;
-        $startDatetime = new DateTime($dateStr);
-        $endDatetime = clone $startDatetime;
-        $endDatetime->add(new DateInterval('PT2H'));
-        
-        // Determine table number to check (new or current)
-        $tableToCheck = $newTableNumber ?? $reservation['table_number'];
-        
-        // Check for collision if table is specified, excluding current reservation
-        if ($tableToCheck) {
-            $collision = findCollision($pdo, $startDatetime, $endDatetime, $tableToCheck, $id);
+
+        $newDate = $data['reservation_date'] ?? $orig['reservation_date'];
+        $newTime = $data['reservation_time'] ?? $orig['reservation_time'];
+
+        if (!preg_match('/^\d{2}:\d{2}$/', $newTime)) {
+            return ['ok' => false, 'error' => 'Neplatný formát času'];
+        }
+        $m = (int)substr($newTime, 3, 2);
+        if ($m !== 0 && $m !== 30) {
+            return ['ok' => false, 'error' => 'Rezervace je možná pouze na celé a půl hodiny'];
+        }
+
+        // Otevírací doba
+        $opening = getOpeningHours($pdo, $newDate);
+        if (!validateWithinOpeningHours($newTime, $opening['open_time'], $opening['close_time'])) {
+            return ['ok' => false, 'error' => 'Mimo otevírací dobu ('.$opening['open_time'].'-'.$opening['close_time'].')'];
+        }
+
+        $start = new DateTime($newDate.' '.$newTime);
+        $end   = clone $start;
+        $end->add(new DateInterval('PT2H'));
+
+        // Nový stůl (NULL je odstranění)
+        $newTable = array_key_exists('table_number', $data)
+            ? ($data['table_number'] === '' ? null : $data['table_number'])
+            : $orig['table_number'];
+
+        // Kolize
+        if ($newTable) {
+            $collision = findCollision($pdo, $start, $end, $newTable, $id);
             if ($collision) {
-                return ['ok' => false, 'error' => 'Kolize s existující rezervací na stole ' . $tableToCheck . ' v čase ' . $collision['reservation_time']];
+                return ['ok' => false, 'error' => 'Kolize se stávající rezervací ID '.$collision['id'].' na stole '.$newTable];
             }
         }
-        
-        // Update reservation
-        $updateData = [
-            'reservation_date' => $newDate,
-            'reservation_time' => $newTime,
-            'start_datetime' => $startDatetime->format('Y-m-d H:i:s'),
-            'end_datetime' => $endDatetime->format('Y-m-d H:i:s'),
-            'updated_at' => date('Y-m-d H:i:s')
-        ];
-        
-        if ($newTableNumber !== null) {
-            $updateData['table_number'] = $newTableNumber;
+
+        $finalStatus = $orig['status'];
+        if (array_key_exists('status', $data) && $data['status'] !== $orig['status']) {
+            $allowed = ['pending','confirmed','seated','finished','cancelled','no_show'];
+            if (!in_array($data['status'], $allowed)) {
+                return ['ok' => false, 'error' => 'Neplatný status'];
+            }
+            $finalStatus = $data['status'];
         }
-        
-        $setClause = [];
+
+        // Zjištění nezměněnosti
+        $noChange =
+            $newDate === $orig['reservation_date'] &&
+            $newTime === $orig['reservation_time'] &&
+            $newTable == $orig['table_number'] &&
+            (!isset($data['party_size']) || $data['party_size'] == $orig['party_size']) &&
+            (!isset($data['customer_name']) || $data['customer_name'] == $orig['customer_name']) &&
+            (!isset($data['phone']) || $data['phone'] == $orig['phone']) &&
+            (!isset($data['email']) || $data['email'] == $orig['email']) &&
+            (!isset($data['notes']) || $data['notes'] == $orig['notes']) &&
+            $finalStatus === $orig['status'];
+
+        if ($noChange) {
+            return [
+                'ok' => true,
+                'unchanged' => true,
+                'reservation' => [
+                    'id' => $id,
+                    'reservation_date' => $newDate,
+                    'reservation_time' => $newTime,
+                    'table_number' => $newTable,
+                    'status' => $finalStatus,
+                    'party_size' => $orig['party_size']
+                ]
+            ];
+        }
+
+        // Sestavení SET
+        $fields = [];
         $params = [];
-        foreach ($updateData as $field => $value) {
-            $setClause[] = "$field = ?";
-            $params[] = $value;
+
+        $set = function($col, $val) use (&$fields, &$params) {
+            $fields[] = "$col = ?";
+            $params[] = ($val === '') ? null : $val;
+        };
+
+        $set('reservation_date', $newDate);
+        $set('reservation_time', $newTime);
+        $set('start_datetime', $start->format('Y-m-d H:i:s'));
+        $set('end_datetime', $end->format('Y-m-d H:i:s'));
+        $set('table_number', $newTable);
+
+        foreach (['customer_name','phone','email','party_size','notes'] as $f) {
+            if (array_key_exists($f, $data)) {
+                $set($f, $data[$f]);
+            }
         }
-        $params[] = $id; // for WHERE clause
-        
-        $sql = "UPDATE reservations SET " . implode(', ', $setClause) . " WHERE id = ?";
+        if ($finalStatus !== $orig['status']) {
+            $set('status', $finalStatus);
+        }
+        $fields[] = "updated_at = NOW()";
+
+        $sql = "UPDATE reservations SET ".implode(', ', $fields)." WHERE id = ?";
+        $params[] = $id;
         $stmt = $pdo->prepare($sql);
         $stmt->execute($params);
-        
-        if ($stmt->rowCount() === 0) {
-            return ['ok' => false, 'error' => 'Rezervace nebyla aktualizována'];
-        }
-        
-        error_log("Updated reservation $id: date=$newDate, time=$newTime, table=" . ($newTableNumber ?? $reservation['table_number']));
-        
-        // Trigger dough recalculation if reservation is confirmed/seated and date is today
-        if (in_array($reservation['status'], ['confirmed', 'seated']) && $newDate === date('Y-m-d')) {
-            try {
-                triggerDoughRecalcIfToday($newDate);
-            } catch (Throwable $e) {
-                error_log("Trigger recalc after updateReservationTime failed: " . $e->getMessage());
+
+        // Přepočet pokud confirmed/seated dnešní (alokace těsta)
+        if (in_array($finalStatus, ['confirmed','seated']) && $newDate === date('Y-m-d')) {
+            try { triggerDoughRecalcIfToday($newDate); } catch (Throwable $e) {
+                error_log("[updateReservation] recalc error: ".$e->getMessage());
+            }
+        } else {
+            // Pokud se status změnil z confirmed/seated na něco jiného (cancelled apod.)
+            if (in_array($orig['status'], ['confirmed','seated']) && $newDate === date('Y-m-d')) {
+                try { triggerDoughRecalcIfToday($newDate); } catch (Throwable $e) {
+                    error_log("[updateReservation] recalc after un-confirm error: ".$e->getMessage());
+                }
             }
         }
-        
+
         return [
             'ok' => true,
-            'updated' => [
+            'reservation' => [
                 'id' => $id,
-                'date' => $newDate,
-                'time' => $newTime,
-                'table_number' => $newTableNumber ?? $reservation['table_number'],
-                'start_datetime' => $startDatetime->format('Y-m-d H:i:s'),
-                'end_datetime' => $endDatetime->format('Y-m-d H:i:s')
+                'reservation_date' => $newDate,
+                'reservation_time' => $newTime,
+                'table_number' => $newTable,
+                'status' => $finalStatus
             ]
         ];
-        
     } catch (Exception $e) {
-        error_log("Error updating reservation time: " . $e->getMessage());
         return ['ok' => false, 'error' => $e->getMessage()];
     }
 }
 
 /**
+ * Zachováme updateReservationTime jako wrapper kvůli případným starším voláním
+ */
+function updateReservationTime($id, $newDate, $newTime, $newTableNumber = null) {
+    $data = [
+        'reservation_date' => $newDate,
+        'reservation_time' => $newTime
+    ];
+    if ($newTableNumber !== null) {
+        $data['table_number'] = $newTableNumber;
+    }
+    return updateReservation($id, $data);
+}
+
+/**
  * Trigger dough recalculation if the reservation date is today
- * @param string $reservationDate Date in Y-m-d format
- * @return array|null Recalculation result or null if not today
  */
 function triggerDoughRecalcIfToday($reservationDate) {
     if ($reservationDate === date('Y-m-d')) {
