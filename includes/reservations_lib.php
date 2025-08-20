@@ -748,17 +748,32 @@ function updateReservation($id, $data) {
         $stmt = $pdo->prepare($sql);
         $stmt->execute($params);
 
-        // Přepočet pokud confirmed/seated dnešní (alokace těsta)
-        if (in_array($finalStatus, ['confirmed','seated']) && $newDate === date('Y-m-d')) {
-            try { triggerDoughRecalcIfToday($newDate); } catch (Throwable $e) {
+        // Trigger recalculation logic - more comprehensive checking
+        $wasAllocating = in_array($orig['status'], ['confirmed','seated']);
+        $isAllocating = in_array($finalStatus, ['confirmed','seated']);
+        $isToday = ($newDate === date('Y-m-d'));
+        $isOriginalToday = ($orig['reservation_date'] === date('Y-m-d'));
+        $partySizeChanged = isset($data['party_size']) && $data['party_size'] != $orig['party_size'];
+        
+        // Trigger recalculation if:
+        // 1. Status changed from/to allocating states and involves today
+        // 2. Party size changed for today's allocating reservation
+        // 3. Date moved from today to another day (or vice versa) for allocating reservation
+        $shouldRecalc = false;
+        
+        if ($isToday && ($wasAllocating !== $isAllocating)) {
+            $shouldRecalc = true; // Status change affecting today's allocation
+        } elseif ($isOriginalToday && ($orig['reservation_date'] !== $newDate) && $wasAllocating) {
+            $shouldRecalc = true; // Moved away from today while allocating
+        } elseif ($isToday && $isAllocating && $partySizeChanged) {
+            $shouldRecalc = true; // Party size changed for today's allocating reservation
+        }
+        
+        if ($shouldRecalc) {
+            try { 
+                triggerDoughRecalcIfToday($isToday ? $newDate : $orig['reservation_date']); 
+            } catch (Throwable $e) {
                 error_log("[updateReservation] recalc error: ".$e->getMessage());
-            }
-        } else {
-            // Pokud se status změnil z confirmed/seated na něco jiného (cancelled apod.)
-            if (in_array($orig['status'], ['confirmed','seated']) && $newDate === date('Y-m-d')) {
-                try { triggerDoughRecalcIfToday($newDate); } catch (Throwable $e) {
-                    error_log("[updateReservation] recalc after un-confirm error: ".$e->getMessage());
-                }
             }
         }
 

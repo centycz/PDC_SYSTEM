@@ -49,10 +49,10 @@ function recalcDailyDoughAllocation($date, $createIfMissing = true) {
         
         if (!$dailySupplies && $createIfMissing) {
             $stmt = $pdo->prepare("
-                INSERT INTO daily_supplies (date, pizza_total, pizza_reserved, pizza_walkin,
-                                            burrata_total, burrata_reserved, burrata_walkin,
+                INSERT INTO daily_supplies (date, pizza_total, pizza_reserved, pizza_walkin, pizza_used,
+                                            burrata_total, burrata_reserved, burrata_walkin, burrata_used,
                                             updated_by, updated_at)
-                VALUES (?, 120, 0, 120, 15, 12, 3, 'AUTO-ALLOC', NOW())
+                VALUES (?, 120, 0, 120, 0, 15, 12, 3, 0, 'AUTO-ALLOC', NOW())
             ");
             $stmt->execute([$date]);
             $stmt = $pdo->prepare("SELECT * FROM daily_supplies WHERE date = ?");
@@ -62,6 +62,11 @@ function recalcDailyDoughAllocation($date, $createIfMissing = true) {
         
         if (!$dailySupplies) {
             return ['ok' => false, 'error' => 'Daily supplies record not found for date: ' . $date];
+        }
+        
+        // Backward compatibility: if pizza_used column doesn't exist, treat as 0
+        if (!isset($dailySupplies['pizza_used'])) {
+            $dailySupplies['pizza_used'] = 0;
         }
         
         // Bereme confirmed + seated
