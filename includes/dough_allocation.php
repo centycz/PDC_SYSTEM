@@ -118,14 +118,15 @@ function recalcDailyDoughAllocation($date, $createIfMissing = true) {
     }
 }
 
-/**
- * Atomicky navýší pizza_used o zadané množství a přepočítá pizza_walkin
- * @param string $date Datum Y-m-d
- * @param int $qty Množství pizz k přičtení
- * @param string $by Kdo/co způsobilo změnu (pro logging)
- * @return bool Success status
- */
-function incrementDailyPizzaUsed($date, $qty, $by = 'ORDER') {
+if (!function_exists('incrementDailyPizzaUsed')) {
+    /**
+     * Atomicky navýší pizza_used o zadané množství a přepočítá pizza_walkin
+     * @param string $date Datum Y-m-d
+     * @param int $qty Množství pizz k přičtení
+     * @param string $by Kdo/co způsobilo změnu (pro logging)
+     * @return bool Success status
+     */
+    function incrementDailyPizzaUsed($date, $qty, $by = 'ORDER') {
     if ($qty <= 0) return false;
     
     try {
@@ -176,13 +177,14 @@ function incrementDailyPizzaUsed($date, $qty, $by = 'ORDER') {
         
         return true;
         
-    } catch (Exception $e) {
+    } catch (Throwable $e) {
         if (isset($pdo) && $pdo->inTransaction()) {
             $pdo->rollBack();
         }
         error_log('[incrementDailyPizzaUsed ERROR] ' . $e->getMessage());
         return false;
     }
+}
 }
 
 // triggerDoughRecalcIfToday je definována v reservations_lib.php
