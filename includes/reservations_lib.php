@@ -159,7 +159,11 @@ function createReservation($data) {
         $reservationId = $pdo->lastInsertId();
         
         // Trigger dough recalculation if this reservation is for today
-        triggerDoughRecalcIfToday($data['reservation_date']);
+        try {
+    triggerDoughRecalcIfToday($data['reservation_date']);
+} catch (Throwable $e) {
+    error_log("Trigger recalc after createReservation failed: ".$e->getMessage());
+}
         
         return ['ok' => true, 'id' => $reservationId];
         

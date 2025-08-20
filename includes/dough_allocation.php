@@ -35,20 +35,16 @@ function recalcDailyDoughAllocation($date, $createIfMissing = true) {
     try {
         $pdo = getPizzaOrdersDb();
         
-        // Load or initialize daily_supplies for date
         $stmt = $pdo->prepare("SELECT * FROM daily_supplies WHERE date = ?");
         $stmt->execute([$date]);
         $dailySupplies = $stmt->fetch(PDO::FETCH_ASSOC);
         
         if (!$dailySupplies && $createIfMissing) {
-            // Create with default values
             $stmt = $pdo->prepare("
                 INSERT INTO daily_supplies (date, pizza_total, pizza_reserved, pizza_walkin, burrata_total, burrata_reserved, burrata_walkin, updated_by, updated_at) 
                 VALUES (?, 120, 0, 120, 15, 12, 3, 'AUTO-ALLOC', NOW())
             ");
             $stmt->execute([$date]);
-            
-            // Reload the record
             $stmt = $pdo->prepare("SELECT * FROM daily_supplies WHERE date = ?");
             $stmt->execute([$date]);
             $dailySupplies = $stmt->fetch(PDO::FETCH_ASSOC);
@@ -58,7 +54,6 @@ function recalcDailyDoughAllocation($date, $createIfMissing = true) {
             return ['ok' => false, 'error' => 'Daily supplies record not found for date: ' . $date];
         }
         
-        // Query reservations with confirmed or seated status for the date
         $stmt = $pdo->prepare("
             SELECT id, party_size 
             FROM reservations 
@@ -68,7 +63,6 @@ function recalcDailyDoughAllocation($date, $createIfMissing = true) {
         $stmt->execute([$date]);
         $reservations = $stmt->fetchAll(PDO::FETCH_ASSOC);
         
-        // Calculate reserved dough allocation
         $totalReservedDough = 0;
         foreach ($reservations as $reservation) {
             $partySize = (int)$reservation['party_size'];
@@ -76,18 +70,21 @@ function recalcDailyDoughAllocation($date, $createIfMissing = true) {
             $totalReservedDough += $doughForReservation;
         }
         
-        // Cap reserved dough to not exceed total available
         $pizzaTotal = (int)$dailySupplies['pizza_total'];
         $pizzaReserved = min($totalReservedDough, $pizzaTotal);
         $pizzaWalkin = $pizzaTotal - $pizzaReserved;
         
-        // Update daily_supplies with new allocation
         $stmt = $pdo->prepare("
             UPDATE daily_supplies 
             SET pizza_reserved = ?, pizza_walkin = ?, updated_by = 'AUTO-ALLOC', updated_at = NOW()
             WHERE date = ?
         ");
         $stmt->execute([$pizzaReserved, $pizzaWalkin, $date]);
+
+        // Volitelný jednoduchý log (mùžeš odstranit po odladìní):
+        if (function_exists('error_log')) {
+            error_log("[DOUGH RECALC] date=$date reservations=" . count($reservations) . " reserved=$pizzaReserved walkin=$pizzaWalkin totalReservedDough=$totalReservedDough");
+        }
         
         return [
             'ok' => true,
@@ -100,18 +97,20 @@ function recalcDailyDoughAllocation($date, $createIfMissing = true) {
         ];
         
     } catch (Exception $e) {
+        error_log("[DOUGH RECALC ERROR] " . $e->getMessage());
         return ['ok' => false, 'error' => $e->getMessage()];
     }
 }
 
-/**
- * Triggers dough recalculation if the date is today
- * @param string $date Date in Y-m-d format
- * @return array|null Result if recalculation was triggered, null otherwise
- */
-function triggerDoughRecalcIfToday($date) {
-    if ($date === date('Y-m-d')) {
-        return recalcDailyDoughAllocation($date, false);
+// POZOR: odstranìna duplicitní triggerDoughRecalcIfToday (je v reservations_lib.php)
+// Pokud bys ji chtìl ponechat zde, zabal ji do:
+/*
+if (!function_exists('triggerDoughRecalcIfToday')) {
+    function triggerDoughRecalcIfToday($date) {
+        if ($date === date('Y-m-d')) {
+            return recalcDailyDoughAllocation($date, false);
+        }
+        return null;
     }
-    return null;
 }
+*/
