@@ -989,18 +989,25 @@ function getTableCountText(count) {
             renderCart();
         }
 
-        // OPRAVENÁ FUNKCE PRO OBJEDNÁVKY
+        // ROBUST ORDER SUBMISSION WITH DOUBLE-CLICK PREVENTION
+        let submittingOrder = false;
         async function submitOrder() {
+            if (submittingOrder) {
+                console.log('Already submitting order, ignoring double-click');
+                return;
+            }
+            
             if (!cart.length || !selectedTable) return;
             
+            submittingOrder = true;
             console.log('=== SUBMIT ORDER START ===');
             console.log('Cart items before submission:', cart.length);
             
             const customerName = document.getElementById('customerName').value;
             const items = [];
-            let orderWasCreated = false; // 🔑 Track if order was successfully created
+            let orderWasCreated = false;
             
-            // Příprava položek pro databázi
+            // Prepare items for database
             cart.forEach(item => {
                 for (let i = 0; i < item.qty; i++) {
                     items.push({
@@ -1023,14 +1030,16 @@ function getTableCountText(count) {
             // Disable button during processing
             const submitBtn = document.getElementById('cartSubmit');
             const originalText = submitBtn.textContent;
-            submitBtn.disabled = true;
-            submitBtn.textContent = 'Odesílám...';
+            if (submitBtn) {
+                submitBtn.disabled = true;
+                submitBtn.textContent = 'Odesílám...';
+            }
             
             const cartBackup = [...cart];
             showMsg('🔄 Odesílám objednávku...');
             
             try {
-                const response = await fetch(API + '?action=add-order', {
+                const response = await fetch('api/orders/create.php', {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json' },
                     body: JSON.stringify({
@@ -1049,6 +1058,7 @@ function getTableCountText(count) {
                     throw new Error(`Server error (${response.status})`);
                 }
                 
+                // Robust JSON parsing
                 let orderResponse;
                 try {
                     const responseText = await response.text();
@@ -1061,86 +1071,54 @@ function getTableCountText(count) {
                 
                 console.log('Parsed response:', orderResponse);
                 
-                // ✅ ZJEDNODUŠENÁ LOGIKA - pokud dostaneme order_id, košík se MUSÍ vymazat
-                const orderId = orderResponse.data?.order_id;
+                // Check if order was successfully created
+                if (!orderResponse.ok) {
+                    throw new Error(orderResponse.error || 'Objednávka nebyla vytvořena');
+                }
                 
+                const orderId = orderResponse.order_id;
                 if (orderId) {
-                    // 🔑 Označit že objednávka byla vytvořena
                     orderWasCreated = true;
                     
-                    // ✅ OKAMŽITÉ VYMAZÁNÍ KOŠÍKU - bez dalších podmínek
-                    console.log('✅ ORDER_ID RECEIVED:', orderId, '- CLEARING CART IMMEDIATELY');
+                    // Clear cart immediately on successful order creation
+                    console.log('✅ ORDER CREATED:', orderId, '- CLEARING CART');
                     clearCart();
                     console.log('✅ CART CLEARED - Current length:', cart.length);
                     
-                    if (orderResponse.success) {
-                        showMsg('✅ Objednávka byla úspěšně odeslána!');
+                    // Handle printer status
+                    if (orderResponse.printer_unavailable) {
+                        showMsg('✅ Objednávka přijata (tisk nedostupný)', true);
                     } else {
-                        showMsg('✅ Objednávka byla uložena, ale nastala chyba: ' + (orderResponse.error || 'Neznámá chyba'));
-                        console.warn('Order saved but with secondary error:', orderResponse.error);
-                    }
-                    
-                    const kitchenItems = items.filter(item => 
-                        ['pizza', 'pasta', 'predkrm', 'dezert'].includes(item.type)
-                    );
-                    
-                    if (kitchenItems.length > 0) {
-                        const table = tables.find(t => t.table_number == selectedTable);
-                        const tableCode = table ? table.table_code : `Stůl ${selectedTable}`;
-                        
-                        const printData = {
-                            order_id: orderId,
-                            table_code: tableCode,
-                            employee_name: localStorage.getItem('employee_name') || 'Neznámý',
-                            customer_name: customerName || '',
-                            created_at: new Date().toISOString(),
-                            items: kitchenItems.map(item => ({
-                                quantity: item.quantity,
-                                item_name: item.name,
-                                note: item.note || ''
-                            }))
-                        };
-                        
-                        console.log('Sending to printer:', printData);
-                        
-                        sendToPrinter(printData).then(printSuccess => {
-                            if (printSuccess) {
-                                showMsg('✅ Objednávka byla úspěšně odeslána a vytištěna!');
-                            } else {
-                                showMsg('⚠️ Objednávka byla odeslána, ale tisk se nezdařil.');
-                            }
-                        }).catch(err => {
-                            console.error('Print error:', err);
-                            showMsg('⚠️ Objednávka byla odeslána, ale chyba při tisku.');
-                        });
+                        showMsg('✅ Objednávka odeslána', false);
                     }
                     
                     refreshOrders();
                     refreshTables();
                     
                 } else {
-                    // ❌ Objednávka nebyla vytvořena - pravá chyba
-                    console.error('❌ ORDER CREATION FAILED - No order_id received:', orderResponse.error);
-                    showMsg(orderResponse.error || 'Chyba při vytváření objednávky - zkuste to znovu', false);
+                    throw new Error('Chybné ID objednávky');
                 }
+                
             } catch (error) {
                 console.error('❌ SUBMIT ERROR:', error);
                 
-                // 🔑 ZJEDNODUŠENÁ LOGIKA - restore cart POUZE pokud objednávka NEBYLA vytvořena
+                // Restore cart only if order was NOT created
                 if (!orderWasCreated && cartBackup.length > 0) {
                     cart = [...cartBackup];
                     renderCart();
-                    console.log('Cart restored from backup - order was NOT created, length:', cart.length);
+                    console.log('Cart restored from backup - order was NOT created');
                 } else if (orderWasCreated) {
                     console.log('Cart NOT restored - order WAS created successfully');
-                } else {
-                    console.log('Cart NOT restored - no backup available');
                 }
                 
-                showMsg('Chyba při odesílání: ' + error.message + ' - zkuste to znovu', false);
+                showMsg('Chyba při odesílání: ' + error.message, true);
+                
             } finally {
-                submitBtn.disabled = false;
-                submitBtn.textContent = originalText;
+                if (submitBtn) {
+                    submitBtn.disabled = false;
+                    submitBtn.textContent = originalText;
+                }
+                submittingOrder = false;
                 console.log('=== SUBMIT ORDER END ===');
                 console.log('Final cart length:', cart.length);
             }
@@ -1248,6 +1226,31 @@ function getTableCountText(count) {
         renderCart();
         refreshOrders();
         setTimeout(loop, 6000);
+        
+        // Helper function for print status display
+        function showPrintStatus(msg, isError) {
+            const el = document.getElementById('printStatus');
+            const messageEl = document.getElementById('printMessage');
+            if (!el || !messageEl) return;
+            
+            messageEl.textContent = msg;
+            el.classList.toggle('error', !!isError);
+            el.style.display = 'block';
+            
+            setTimeout(() => {
+                el.style.display = 'none';
+            }, 5000);
+        }
     </script>
+    
+    <!-- Print Status Display -->
+    <div id="printStatus" style="display:none; position: fixed; top: 10px; right: 10px; padding: 10px; background: #4CAF50; color: white; border-radius: 5px; z-index: 1000;">
+        <span id="printMessage"></span>
+    </div>
+    <style>
+        #printStatus.error {
+            background: #f44336;
+        }
+    </style>
 </body>
 </html>
