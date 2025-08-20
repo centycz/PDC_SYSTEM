@@ -81,7 +81,7 @@ function recalcDailyDoughAllocation($date, $createIfMissing = true) {
         ");
         $stmt->execute([$pizzaReserved, $pizzaWalkin, $date]);
 
-        // Volitelný jednoduchý log (mùžeš odstranit po odladìní):
+        // Volitelnï¿½ jednoduchï¿½ log (mï¿½ï¿½eï¿½ odstranit po odladï¿½nï¿½):
         if (function_exists('error_log')) {
             error_log("[DOUGH RECALC] date=$date reservations=" . count($reservations) . " reserved=$pizzaReserved walkin=$pizzaWalkin totalReservedDough=$totalReservedDough");
         }
@@ -102,15 +102,6 @@ function recalcDailyDoughAllocation($date, $createIfMissing = true) {
     }
 }
 
-// POZOR: odstranìna duplicitní triggerDoughRecalcIfToday (je v reservations_lib.php)
-// Pokud bys ji chtìl ponechat zde, zabal ji do:
-/*
-if (!function_exists('triggerDoughRecalcIfToday')) {
-    function triggerDoughRecalcIfToday($date) {
-        if ($date === date('Y-m-d')) {
-            return recalcDailyDoughAllocation($date, false);
-        }
-        return null;
-    }
-}
-*/
+// POZOR: odstranÄ›na duplicitnÃ­ triggerDoughRecalcIfToday (je v reservations_lib.php)
+// DuplicitnÃ­ funkce byla odstranÄ›na, aby se pÅ™edeÅ¡lo fatal redeclare error.
+// KanonickÃ¡ implementace je v reservations_lib.php a je pouÅ¾ita odtamtud.
