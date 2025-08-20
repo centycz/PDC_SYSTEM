@@ -156,7 +156,12 @@ function createReservation($data) {
         $stmt = $pdo->prepare($sql);
         $stmt->execute($params);
         
-        return ['ok' => true, 'id' => $pdo->lastInsertId()];
+        $reservationId = $pdo->lastInsertId();
+        
+        // Trigger dough recalculation if this reservation is for today
+        triggerDoughRecalcIfToday($data['reservation_date']);
+        
+        return ['ok' => true, 'id' => $reservationId];
         
     } catch (Exception $e) {
         return ['ok' => false, 'error' => $e->getMessage()];
@@ -178,11 +183,21 @@ function updateStatus($id, $status) {
             return ['ok' => false, 'error' => 'Neplatný stav rezervace'];
         }
         
+        // Get reservation date for recalculation trigger
+        $stmt = $pdo->prepare("SELECT reservation_date FROM reservations WHERE id = ?");
+        $stmt->execute([$id]);
+        $reservationDate = $stmt->fetchColumn();
+        
         $stmt = $pdo->prepare("UPDATE reservations SET status = ?, updated_at = NOW() WHERE id = ?");
         $stmt->execute([$status, $id]);
         
         if ($stmt->rowCount() === 0) {
             return ['ok' => false, 'error' => 'Rezervace nenalezena'];
+        }
+        
+        // Trigger dough recalculation if this reservation is for today
+        if ($reservationDate) {
+            triggerDoughRecalcIfToday($reservationDate);
         }
         
         return ['ok' => true];
@@ -245,6 +260,10 @@ function seatReservation($id) {
         }
         
         $pdo->commit();
+        
+        // Trigger dough recalculation if this reservation is for today
+        triggerDoughRecalcIfToday($reservation['reservation_date']);
+        
         return ['ok' => true];
         
     } catch (Exception $e) {
@@ -295,6 +314,10 @@ function finishReservation($id) {
         }
         
         $pdo->commit();
+        
+        // Trigger dough recalculation if this reservation is for today
+        triggerDoughRecalcIfToday($reservation['reservation_date']);
+        
         return ['ok' => true];
         
     } catch (Exception $e) {
@@ -312,8 +335,8 @@ function cancelReservation($id) {
     try {
         $pdo = getReservationDb();
         
-        // Get reservation details
-        $stmt = $pdo->prepare("SELECT status FROM reservations WHERE id = ?");
+        // Get reservation details including date
+        $stmt = $pdo->prepare("SELECT status, reservation_date FROM reservations WHERE id = ?");
         $stmt->execute([$id]);
         $reservation = $stmt->fetch(PDO::FETCH_ASSOC);
         
@@ -329,6 +352,9 @@ function cancelReservation($id) {
         // Update reservation status to cancelled
         $stmt = $pdo->prepare("UPDATE reservations SET status = 'cancelled', updated_at = NOW() WHERE id = ?");
         $stmt->execute([$id]);
+        
+        // Trigger dough recalculation if this reservation is for today
+        triggerDoughRecalcIfToday($reservation['reservation_date']);
         
         return ['ok' => true];
         
@@ -491,4 +517,48 @@ function validateWithinOpeningHours($startTime, $openTime, $closeTime) {
     }
     
     return true;
+}
+
+/**
+ * Get seated reservation for a table at the current time
+ * @param int $tableNumber Table number
+ * @param string|null $now Current datetime (default: now)
+ * @return array|null Reservation data or null if not found
+ */
+function getSeatedReservationForTable($tableNumber, $now = null) {
+    try {
+        $pdo = getReservationDb();
+        
+        if ($now === null) {
+            $now = date('Y-m-d H:i:s');
+        }
+        
+        // Find seated reservation for this table that is currently active
+        $stmt = $pdo->prepare("
+            SELECT * FROM reservations 
+            WHERE table_number = ? 
+            AND status = 'seated'
+            AND reservation_date = DATE(?)
+        ");
+        $stmt->execute([$tableNumber, $now]);
+        
+        return $stmt->fetch(PDO::FETCH_ASSOC) ?: null;
+        
+    } catch (Exception $e) {
+        error_log("Error finding seated reservation for table $tableNumber: " . $e->getMessage());
+        return null;
+    }
+}
+
+/**
+ * Trigger dough recalculation if the reservation date is today
+ * @param string $reservationDate Date in Y-m-d format
+ * @return array|null Recalculation result or null if not today
+ */
+function triggerDoughRecalcIfToday($reservationDate) {
+    if ($reservationDate === date('Y-m-d')) {
+        require_once __DIR__ . '/dough_allocation.php';
+        return recalcDailyDoughAllocation($reservationDate, false);
+    }
+    return null;
 }

@@ -358,10 +358,10 @@ try {
             $items = $body['items'] ?? [];
             $customer_name = $body['customer_name'] ?? '';
             $employee_name = $body['employee_name'] ?? '';
-            $is_reserved = $body['is_reserved'] ?? false; // Nový parametr pro označení rezervace
+            // Note: is_reserved is now automatically determined, ignoring client input
             
             file_put_contents('/tmp/restaurant_debug.log', 
-                "Parsed data: table=$table_number, items=" . count($items) . ", customer=$customer_name, employee=$employee_name, is_reserved=" . ($is_reserved ? 'true' : 'false') . "\n", 
+                "Parsed data: table=$table_number, items=" . count($items) . ", customer=$customer_name, employee=$employee_name\n", 
                 FILE_APPEND
             );
             
@@ -402,16 +402,33 @@ try {
             $final_employee_name = $employee_name ?: ($_SESSION['employee_name'] ?? '');
             file_put_contents('/tmp/restaurant_debug.log', "Final employee name: $final_employee_name\n", FILE_APPEND);
 
-            // Add is_reserved column if it doesn't exist
+            // Add database migrations for new schema
             try {
                 $pdo->exec("ALTER TABLE orders ADD COLUMN IF NOT EXISTS is_reserved BOOLEAN DEFAULT FALSE AFTER employee_name");
+                $pdo->exec("ALTER TABLE orders ADD COLUMN IF NOT EXISTS reservation_id INT NULL AFTER table_session_id");
+                $pdo->exec("ALTER TABLE orders ADD INDEX IF NOT EXISTS idx_orders_reservation_id (reservation_id)");
+                $pdo->exec("ALTER TABLE reservations MODIFY status ENUM('pending','confirmed','seated','finished','cancelled','no_show') DEFAULT 'pending'");
             } catch (PDOException $e) {
-                // Column already exists
+                // Columns/indexes already exist
+                file_put_contents('/tmp/restaurant_debug.log', "Schema migration info: " . $e->getMessage() . "\n", FILE_APPEND);
             }
 
-            // Create order
-            $stmt = $pdo->prepare("INSERT INTO orders (table_session_id, created_at, status, order_type, customer_name, employee_name, is_reserved) VALUES (?, NOW(), 'pending', 'other', ?, ?, ?)");
-            $result = $stmt->execute([$table_session_id, $customer_name, $final_employee_name, $is_reserved ? 1 : 0]);
+            // Detect seated reservation for table (automatic reservation linking)
+            require_once __DIR__ . '/../../includes/reservations_lib.php';
+            require_once __DIR__ . '/../../includes/dough_allocation.php';
+            
+            $seatedReservation = getSeatedReservationForTable($table_number);
+            $reservation_id = $seatedReservation ? $seatedReservation['id'] : null;
+            $is_reserved = ($seatedReservation !== null);
+            
+            file_put_contents('/tmp/restaurant_debug.log', 
+                "Reservation detection: table=$table_number, reservation_id=" . ($reservation_id ?? 'NULL') . ", is_reserved=" . ($is_reserved ? 'true' : 'false') . "\n", 
+                FILE_APPEND
+            );
+
+            // Create order with automatic reservation linking
+            $stmt = $pdo->prepare("INSERT INTO orders (table_session_id, reservation_id, created_at, status, order_type, customer_name, employee_name, is_reserved) VALUES (?, ?, NOW(), 'pending', 'other', ?, ?, ?)");
+            $result = $stmt->execute([$table_session_id, $reservation_id, $customer_name, $final_employee_name, $is_reserved ? 1 : 0]);
             
             if (!$result) {
                 file_put_contents('/tmp/restaurant_debug.log', "ERROR: Failed to insert order\n", FILE_APPEND);
@@ -449,6 +466,65 @@ try {
                 if (!$result) {
                     file_put_contents('/tmp/restaurant_debug.log', "ERROR: Failed to insert item $index\n", FILE_APPEND);
                     throw new Exception("Failed to insert order item");
+                }
+            }
+
+            // Dough consumption logic for pizza items
+            if ($hasPizza) {
+                // Count total pizza items in this order
+                $stmt = $pdo->prepare("SELECT COALESCE(SUM(quantity), 0) as pizza_count FROM order_items WHERE order_id = ? AND item_type = 'pizza'");
+                $stmt->execute([$order_id]);
+                $pizzaCount = (int)$stmt->fetchColumn();
+                
+                if ($pizzaCount > 0) {
+                    $today = date('Y-m-d');
+                    
+                    // Get current daily supplies
+                    $stmt = $pdo->prepare("SELECT pizza_reserved, pizza_walkin FROM daily_supplies WHERE date = ?");
+                    $stmt->execute([$today]);
+                    $supplies = $stmt->fetch(PDO::FETCH_ASSOC);
+                    
+                    if ($supplies) {
+                        $pizzaReserved = (int)$supplies['pizza_reserved'];
+                        $pizzaWalkin = (int)$supplies['pizza_walkin'];
+                        
+                        $consumedReserved = 0;
+                        $consumedWalkin = 0;
+                        
+                        if ($is_reserved && $pizzaReserved > 0) {
+                            // Take from reserved pool first for seated reservation
+                            $consumedReserved = min($pizzaCount, $pizzaReserved);
+                            $remainingPizzas = $pizzaCount - $consumedReserved;
+                            
+                            if ($remainingPizzas > 0 && $pizzaWalkin > 0) {
+                                // Take remainder from walk-in pool
+                                $consumedWalkin = min($remainingPizzas, $pizzaWalkin);
+                            }
+                        } else {
+                            // Take from walk-in pool for non-reserved or non-seated reservations
+                            if ($pizzaWalkin > 0) {
+                                $consumedWalkin = min($pizzaCount, $pizzaWalkin);
+                            }
+                        }
+                        
+                        // Update supplies (never go negative)
+                        if ($consumedReserved > 0 || $consumedWalkin > 0) {
+                            $stmt = $pdo->prepare("
+                                UPDATE daily_supplies 
+                                SET pizza_reserved = GREATEST(0, pizza_reserved - ?),
+                                    pizza_walkin = GREATEST(0, pizza_walkin - ?),
+                                    pizza_used = pizza_used + ?,
+                                    updated_at = NOW()
+                                WHERE date = ?
+                            ");
+                            $stmt->execute([$consumedReserved, $consumedWalkin, $pizzaCount, $today]);
+                            
+                            file_put_contents('/tmp/restaurant_debug.log', 
+                                "Dough consumed: $pizzaCount pizzas (reserved: $consumedReserved, walkin: $consumedWalkin) for order $order_id" . ($is_reserved ? " [RESERVED]" : " [WALKIN]") . "\n", 
+                                FILE_APPEND
+                            );
+                        }
+                    }
                 }
             }
 
