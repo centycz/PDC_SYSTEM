@@ -56,7 +56,18 @@ if ($_POST['action'] ?? false) {
             ");
             $stmt->execute([$date, $pizza_total, $burrata_total, $pizza_reserved, $pizza_walkin, $burrata_reserved, $burrata_walkin, $_SESSION['username'] ?? 'centycz']);
             
-            $success_message = "Zásoby byly úspěšně aktualizovány! Spálené pizzy byly resetovány.";
+            // After updating supplies, trigger recalculation if only pizza_total was set (automation mode)
+            if (isset($_POST['pizza_total']) && !isset($_POST['pizza_reserved'])) {
+                require_once __DIR__ . '/../includes/dough_allocation.php';
+                $recalcResult = recalcDailyDoughAllocation($date, false);
+                if ($recalcResult && $recalcResult['ok']) {
+                    $success_message = "Zásoby byly úspěšně aktualizovány! Automaticky přepočítáno: {$recalcResult['pizza_reserved']} rezervované, {$recalcResult['pizza_walkin']} walk-in pizzy.";
+                } else {
+                    $success_message = "Zásoby byly úspěšně aktualizovány! Spálené pizzy byly resetovány.";
+                }
+            } else {
+                $success_message = "Zásoby byly úspěšně aktualizovány! Spálené pizzy byly resetovány.";
+            }
         } catch(PDOException $e) {
             $error_message = "Chyba při ukládání: " . $e->getMessage();
         }
@@ -139,6 +150,10 @@ if ($_POST['action'] ?? false) {
         ");
         $stmt->execute([$date, $_SESSION['username'] ?? 'centycz']);
         
+        // Trigger recalculation for the new day
+        require_once __DIR__ . '/../includes/dough_allocation.php';
+        recalcDailyDoughAllocation($date, false);
+        
         header("Location: status_dashboard.php?reset=success");
         exit;
     } catch(PDOException $e) {
@@ -197,19 +212,30 @@ if (!$supplies) {
         $debug_info['auto_reservation_error'] = $e->getMessage();
     }
     
+    // Create initial daily supplies with total only, then trigger automated allocation
     $stmt = $pdo->prepare("
         INSERT INTO daily_supplies (date, pizza_total, burrata_total, pizza_reserved, pizza_walkin, burrata_reserved, burrata_walkin, updated_by, updated_at) 
-        VALUES (?, 120, 15, ?, ?, 12, 3, 'AUTO-CALC', NOW())
+        VALUES (?, 120, 15, 0, 120, 12, 3, 'AUTO-CALC', NOW())
     ");
-    $stmt->execute([$date, $auto_pizza_reserved, $auto_pizza_walkin]);
+    $stmt->execute([$date]);
+    
+    // Now trigger automated allocation calculation
+    require_once __DIR__ . '/../includes/dough_allocation.php';
+    $recalcResult = recalcDailyDoughAllocation($date, false);
     
     $pizza_total = 120;
     $burrata_total = 15;
-    $pizza_reserved = $auto_pizza_reserved;
-    $pizza_walkin = $auto_pizza_walkin;
+    if ($recalcResult && $recalcResult['ok']) {
+        $pizza_reserved = $recalcResult['pizza_reserved'];
+        $pizza_walkin = $recalcResult['pizza_walkin'];
+        $success_message = "🔄 Nový den! Automaticky vypočítáno: {$pizza_reserved} rezervované, {$pizza_walkin} walk-in pizzy.";
+    } else {
+        $pizza_reserved = 100;
+        $pizza_walkin = 20;
+        $success_message = "🔄 Nový den! Zásoby automaticky nastaveny na výchozí hodnoty (Rezervované: 100 pizz, Walk-in: 20 pizz).";
+    }
     $burrata_reserved = 12;
     $burrata_walkin = 3;
-    $success_message = "🔄 Nový den! Zásoby automaticky nastaveny na výchozí hodnoty (Rezervované: 100 pizz, Walk-in: 20 pizz).";
 } else {
     // Pokud sloupce neexistují v existujících záznamech, přidáme je
     if (!isset($supplies['pizza_reserved'])) {
