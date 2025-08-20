@@ -49,10 +49,10 @@ function recalcDailyDoughAllocation($date, $createIfMissing = true) {
         
         if (!$dailySupplies && $createIfMissing) {
             $stmt = $pdo->prepare("
-                INSERT INTO daily_supplies (date, pizza_total, pizza_reserved, pizza_walkin,
-                                            burrata_total, burrata_reserved, burrata_walkin,
+                INSERT INTO daily_supplies (date, pizza_total, pizza_reserved, pizza_walkin, pizza_used,
+                                            burrata_total, burrata_reserved, burrata_walkin, burrata_used,
                                             updated_by, updated_at)
-                VALUES (?, 120, 0, 120, 15, 12, 3, 'AUTO-ALLOC', NOW())
+                VALUES (?, 120, 0, 120, 0, 15, 12, 3, 0, 'AUTO-ALLOC', NOW())
             ");
             $stmt->execute([$date]);
             $stmt = $pdo->prepare("SELECT * FROM daily_supplies WHERE date = ?");
@@ -62,6 +62,11 @@ function recalcDailyDoughAllocation($date, $createIfMissing = true) {
         
         if (!$dailySupplies) {
             return ['ok' => false, 'error' => 'Daily supplies record not found for date: ' . $date];
+        }
+        
+        // Backward compatibility: if pizza_used column doesn't exist, treat as 0
+        if (!isset($dailySupplies['pizza_used'])) {
+            $dailySupplies['pizza_used'] = 0;
         }
         
         // Bereme confirmed + seated
@@ -82,8 +87,9 @@ function recalcDailyDoughAllocation($date, $createIfMissing = true) {
         }
         
         $pizzaTotal    = (int)$dailySupplies['pizza_total'];
+        $pizzaUsed     = (int)($dailySupplies['pizza_used'] ?? 0);
         $pizzaReserved = min($pizzaTotal, $totalReservedDough);
-        $pizzaWalkin   = max(0, $pizzaTotal - $pizzaReserved);
+        $pizzaWalkin   = max(0, $pizzaTotal - $pizzaReserved - $pizzaUsed);
         
         $stmt = $pdo->prepare("
             UPDATE daily_supplies
@@ -92,12 +98,13 @@ function recalcDailyDoughAllocation($date, $createIfMissing = true) {
         ");
         $stmt->execute([$pizzaReserved, $pizzaWalkin, $date]);
         
-        error_log("[DOUGH RECALC] date=$date reservations=".count($reservations)." reserved=$pizzaReserved walkin=$pizzaWalkin factor=".DOUGH_FACTOR);
+        error_log("[DOUGH RECALC] date=$date reservations=".count($reservations)." reserved=$pizzaReserved used=$pizzaUsed walkin=$pizzaWalkin factor=".DOUGH_FACTOR);
         
         return [
             'ok' => true,
             'date' => $date,
             'pizza_total' => $pizzaTotal,
+            'pizza_used' => $pizzaUsed,
             'pizza_reserved' => $pizzaReserved,
             'pizza_walkin' => $pizzaWalkin,
             'reservations_count' => count($reservations),
@@ -108,6 +115,73 @@ function recalcDailyDoughAllocation($date, $createIfMissing = true) {
     } catch (Exception $e) {
         error_log("[DOUGH RECALC ERROR] ".$e->getMessage());
         return ['ok' => false, 'error' => $e->getMessage()];
+    }
+}
+
+/**
+ * Atomicky navýší pizza_used o zadané množství a přepočítá pizza_walkin
+ * @param string $date Datum Y-m-d
+ * @param int $qty Množství pizz k přičtení
+ * @param string $by Kdo/co způsobilo změnu (pro logging)
+ * @return bool Success status
+ */
+function incrementDailyPizzaUsed($date, $qty, $by = 'ORDER') {
+    if ($qty <= 0) return false;
+    
+    try {
+        $pdo = getPizzaOrdersDb();
+        
+        if (!$pdo->inTransaction()) {
+            $pdo->beginTransaction();
+        }
+        
+        // Lock row for update
+        $stmt = $pdo->prepare("SELECT id, pizza_total, pizza_used, pizza_reserved FROM daily_supplies WHERE date = ? FOR UPDATE");
+        $stmt->execute([$date]);
+        $row = $stmt->fetch(PDO::FETCH_ASSOC);
+        
+        if (!$row) {
+            // Create default record if missing
+            $stmt = $pdo->prepare("
+                INSERT INTO daily_supplies (date, pizza_total, burrata_total, pizza_used, burrata_used, 
+                                          updated_by, updated_at, pizza_reserved, pizza_walkin, 
+                                          burrata_reserved, burrata_walkin) 
+                VALUES (?, 120, 15, 0, 0, ?, NOW(), 0, 0, 0, 0)
+            ");
+            $stmt->execute([$date, $by]);
+            
+            // Re-fetch the created record
+            $stmt = $pdo->prepare("SELECT id, pizza_total, pizza_used, pizza_reserved FROM daily_supplies WHERE date = ? FOR UPDATE");
+            $stmt->execute([$date]);
+            $row = $stmt->fetch(PDO::FETCH_ASSOC);
+        }
+        
+        $pizzaUsed = (int)$row['pizza_used'] + $qty;
+        $pizzaTotal = (int)$row['pizza_total'];
+        $pizzaReserved = (int)$row['pizza_reserved'];
+        $pizzaWalkin = max(0, $pizzaTotal - $pizzaReserved - $pizzaUsed);
+        
+        $stmt = $pdo->prepare("
+            UPDATE daily_supplies 
+            SET pizza_used = ?, pizza_walkin = ?, updated_by = ?, updated_at = NOW() 
+            WHERE id = ?
+        ");
+        $stmt->execute([$pizzaUsed, $pizzaWalkin, $by, $row['id']]);
+        
+        if ($pdo->inTransaction()) {
+            $pdo->commit();
+        }
+        
+        error_log("[PIZZA USED +$qty] date=$date used=$pizzaUsed walkin=$pizzaWalkin reserved=$pizzaReserved by=$by");
+        
+        return true;
+        
+    } catch (Exception $e) {
+        if (isset($pdo) && $pdo->inTransaction()) {
+            $pdo->rollBack();
+        }
+        error_log('[incrementDailyPizzaUsed ERROR] ' . $e->getMessage());
+        return false;
     }
 }
 

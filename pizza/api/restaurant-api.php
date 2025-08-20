@@ -469,7 +469,7 @@ try {
                 }
             }
 
-            // Dough consumption logic for pizza items
+            // Simplified dough consumption using new helper function
             if ($hasPizza) {
                 // Count total pizza items in this order
                 $stmt = $pdo->prepare("SELECT COALESCE(SUM(quantity), 0) as pizza_count FROM order_items WHERE order_id = ? AND item_type = 'pizza'");
@@ -479,51 +479,22 @@ try {
                 if ($pizzaCount > 0) {
                     $today = date('Y-m-d');
                     
-                    // Get current daily supplies
-                    $stmt = $pdo->prepare("SELECT pizza_reserved, pizza_walkin FROM daily_supplies WHERE date = ?");
-                    $stmt->execute([$today]);
-                    $supplies = $stmt->fetch(PDO::FETCH_ASSOC);
+                    // Include dough_allocation.php for the helper function
+                    require_once __DIR__ . '/../../includes/dough_allocation.php';
                     
-                    if ($supplies) {
-                        $pizzaReserved = (int)$supplies['pizza_reserved'];
-                        $pizzaWalkin = (int)$supplies['pizza_walkin'];
-                        
-                        $consumedReserved = 0;
-                        $consumedWalkin = 0;
-                        
-                        if ($is_reserved && $pizzaReserved > 0) {
-                            // Take from reserved pool first for seated reservation
-                            $consumedReserved = min($pizzaCount, $pizzaReserved);
-                            $remainingPizzas = $pizzaCount - $consumedReserved;
-                            
-                            if ($remainingPizzas > 0 && $pizzaWalkin > 0) {
-                                // Take remainder from walk-in pool
-                                $consumedWalkin = min($remainingPizzas, $pizzaWalkin);
-                            }
-                        } else {
-                            // Take from walk-in pool for non-reserved or non-seated reservations
-                            if ($pizzaWalkin > 0) {
-                                $consumedWalkin = min($pizzaCount, $pizzaWalkin);
-                            }
-                        }
-                        
-                        // Update supplies (never go negative)
-                        if ($consumedReserved > 0 || $consumedWalkin > 0) {
-                            $stmt = $pdo->prepare("
-                                UPDATE daily_supplies 
-                                SET pizza_reserved = GREATEST(0, pizza_reserved - ?),
-                                    pizza_walkin = GREATEST(0, pizza_walkin - ?),
-                                    pizza_used = pizza_used + ?,
-                                    updated_at = NOW()
-                                WHERE date = ?
-                            ");
-                            $stmt->execute([$consumedReserved, $consumedWalkin, $pizzaCount, $today]);
-                            
-                            file_put_contents('/tmp/restaurant_debug.log', 
-                                "Dough consumed: $pizzaCount pizzas (reserved: $consumedReserved, walkin: $consumedWalkin) for order $order_id" . ($is_reserved ? " [RESERVED]" : " [WALKIN]") . "\n", 
-                                FILE_APPEND
-                            );
-                        }
+                    // Use the new atomic helper function
+                    $success = incrementDailyPizzaUsed($today, $pizzaCount, 'ORDER');
+                    
+                    if ($success) {
+                        file_put_contents('/tmp/restaurant_debug.log', 
+                            "Pizza consumption recorded: $pizzaCount pizzas for order $order_id" . ($is_reserved ? " [RESERVED]" : " [WALKIN]") . "\n", 
+                            FILE_APPEND
+                        );
+                    } else {
+                        file_put_contents('/tmp/restaurant_debug.log', 
+                            "ERROR: Failed to record pizza consumption for order $order_id\n", 
+                            FILE_APPEND
+                        );
                     }
                 }
             }
