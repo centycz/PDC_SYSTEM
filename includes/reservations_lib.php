@@ -810,9 +810,6 @@ function updateReservationTime($id, $newDate, $newTime, $newTableNumber = null) 
  * Trigger dough recalculation if the reservation date is today
  */
 function triggerDoughRecalcIfToday($reservationDate) {
-    if ($reservationDate === date('Y-m-d')) {
-        require_once __DIR__ . '/dough_allocation.php';
-        return recalcDailyDoughAllocation($reservationDate, false);
-    }
-    return null;
+    require_once __DIR__ . '/dough_auto.php';
+    return recalcTodayIf($reservationDate);
 }

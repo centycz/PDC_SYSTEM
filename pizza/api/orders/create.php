@@ -8,7 +8,7 @@ if (!isset($_SESSION['order_user'])) {
     exit;
 }
 
-require_once __DIR__ . '/../../../includes/dough_allocation.php';
+require_once __DIR__ . '/../../../includes/dough_auto.php';
 
 try {
     $raw = file_get_contents('php://input');
@@ -80,7 +80,7 @@ try {
 
     // Update daily pizza consumption
     if ($pizzaCount > 0) {
-        incrementDailyPizzaUsed($date, $pizzaCount, 'ORDER');
+        incrementPizzaUsed($date, $pizzaCount, 'ORDER');
     }
 
     // Try to print - wrapped to prevent order failure if printer is offline
