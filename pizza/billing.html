@@ -745,13 +745,19 @@ async function loadTables() {
         console.log(`\n--- Processing table ${table.table_number} (${table.table_code}) ---`);
         console.log('Table status:', table.status);
         
-        // ✅ OPRAVA: Načti bill pro každý stůl bez ohledu na status
-        const billRes = await fetch(API + '?action=session-bill&table_number=' + table.table_number);
+        // ✅ OPRAVA: Načti bill pro každý stůl bez ohledu na status - USE get-bill
+        const billRes = await fetch(API + '?action=get-bill&table=' + table.table_number);
         let items = [];
         try { 
             const bill = await billRes.json();
             console.log('Bill response for table', table.table_number, ':', bill);
-            items = bill.data && bill.data.items ? bill.data.items.filter(item => item.status !== 'cancelled') : [];
+            if (bill.success && bill.data && bill.data.items) {
+                // Filter items with outstanding quantity > 0
+                items = bill.data.items.filter(item => {
+                    const outstandingQty = getItemValue(item, 'qty_outstanding', 'outstanding_qty', 'outstanding_quantity');
+                    return outstandingQty > 0;
+                });
+            }
         } catch(e){
             console.error('Error loading bill for table', table.table_number, ':', e);
         }
@@ -765,41 +771,30 @@ async function loadTables() {
             continue;
         }
 
-        // ✅ OPRAVA: Zkontroluj jestli jsou všechny položky zaplacené
-        const allItemsPaid = items.every(item => item.status === 'paid');
-        console.log('All items paid for table', table.table_number, ':', allItemsPaid);
+        // ✅ OPRAVA: Check if table has any outstanding items
+        const hasOutstandingItems = items.length > 0;
+        console.log('Has outstanding items for table', table.table_number, ':', hasOutstandingItems);
         
-        if (allItemsPaid) {
-            console.log('All items paid for table', table.table_number, '- marking as cleaned');
-            try {
-                await fetch(API + '?action=mark-table-as-cleaned', {
-                    method: 'POST',
-                    headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({ table_number: table.table_number })
-                });
-                console.log(`Table ${table.table_number} marked as cleaned`);
-            } catch (e) {
-                console.error('Error marking table as cleaned:', e);
-            }
+        if (!hasOutstandingItems) {
+            console.log('No outstanding items for table', table.table_number, '- marking as cleaned if needed');
+            // Note: Table cleanup will be handled by the API when all items are paid
             continue;
         }
 
-        // Spočítej částky
-        let paidAmount = 0;
-        let totalAmount = 0;
+        // Calculate amounts based on get-bill data structure
+        let outstandingAmount = 0;
         items.forEach(item => {
-            totalAmount += item.unit_price * item.quantity;
-            if (item.status === 'paid') {
-                paidAmount += item.unit_price * item.quantity;
-            }
+            const outstandingQty = getItemValue(item, 'qty_outstanding', 'outstanding_qty', 'outstanding_quantity');
+            const unitPrice = parseFloat(getItemValue(item, 'unit_price', 'price')) || 0;
+            outstandingAmount += unitPrice * outstandingQty;
         });
 
-        table.paidAmount = paidAmount;
-        table.remainingAmount = totalAmount - paidAmount;
-        table.billItems = groupBillItems(items.filter(item => item.status !== 'cancelled'));
+        // Set table data for rendering
+        table.outstandingAmount = outstandingAmount;
+        table.billItems = items; // Use items directly from get-bill
         
         console.log('Adding table', table.table_number, 'to filtered list');
-        console.log('Total amount:', totalAmount, 'Paid amount:', paidAmount);
+        console.log('Outstanding amount:', outstandingAmount);
         
         filtered.push(table);
     }
@@ -970,81 +965,48 @@ function getBillItemClass(status) {
     
     container.innerHTML = tables.map(t => {
         const items = t.billItems || [];
-        const total = items.reduce((s,x)=>s+(x.qty*x.unit_price),0);
-        const unpaid = items.filter(i => i.status !== 'paid');
-        const allPaid = unpaid.length === 0;
-        
-        // ✅ OPRAVA: Zkontroluj jen nezaplacené položky
-const unpaidItems = items.filter(i => i.status !== 'paid');
-const unpaidDeliveredItems = unpaidItems.filter(i => i.status === 'delivered');
-const allUnpaidAreDelivered = unpaidItems.length > 0 && unpaidItems.every(i => i.status === 'delivered');
-const canPayAll = allUnpaidAreDelivered && !allPaid;
-
-// ✅ PŘIDEJ TUTO LOGIKU PRO ZOBRAZENÍ VŠECH POLOŽEK
-const hasAnyItems = items.length > 0;
-
-console.log('Items:', items.map(i => `${i.item_name}: ${i.status}`)); // Debug
-console.log('Unpaid items:', unpaidItems.length, 'Unpaid delivered:', unpaidDeliveredItems.length, 'Can pay all:', canPayAll); // Debug
-
-        const canPaySplit = !allPaid;
+        const outstandingAmount = t.outstandingAmount || 0;
+        const hasAnyItems = items.length > 0;
 
         return `
-        <div class="order-card${allPaid ? ' bill-item zaplaceno' : ''}">
+        <div class="order-card">
     <div class="order-header">
         <div class="table-number">${t.table_code}</div>
         <div class="order-time">${t.status === 'occupied' ? 'Obsazeno' : t.status}</div>
     </div>
     <div class="order-items">
         <ul class="bill-list">
-        ${items.map(i=>{
-            const stav = statusLabel(i.status);
-            const canCancel = i.status !== 'paid' && i.status !== 'cancelled';
-            
-            const displayClass = getBillItemClass(i.status);
-            
-            const modalData = {
-                item_name: i.item_name,
-                qty: i.qty,
-                unit_price: i.unit_price,
-                ids: i.ids,
-                all_items: i.all_items || [i],
-                status: i.status
-            };
+        ${items.map(item => {
+            const itemName = getItemValue(item, 'name', 'item_name');
+            const outstandingQty = getItemValue(item, 'qty_outstanding', 'outstanding_qty', 'outstanding_quantity');
+            const unitPrice = parseFloat(getItemValue(item, 'unit_price', 'price')) || 0;
+            const itemTotal = outstandingQty * unitPrice;
             
             return `
-            <li class="bill-item ${displayClass}">
+            <li class="bill-item">
                 <span>
-                    <span class="bill-name">${i.item_name}</span>
-                    ${i.qty > 1 ? `<span class="bill-qty">(${i.qty}×)</span>` : ""}
-                    ${i.note ? `<span class="bill-note">📝 ${i.note}</span>` : ""}
-                    <span class="bill-status ${stav.css}">${stav.text}</span>
-                    ${canCancel ? `<button class="btn btn-cancel-item" onclick='showCancelItemModal(${JSON.stringify(modalData)})'>❌</button>` : ''}
+                    <span class="bill-name">${itemName}</span>
+                    ${outstandingQty > 1 ? `<span class="bill-qty">(${outstandingQty}× zbývá)</span>` : ""}
                 </span>
-                <span>${i.status === 'cancelled' ? '0 Kč (zrušeno)' : (i.qty * i.unit_price + ' Kč')}</span>
+                <span>${itemTotal} Kč</span>
             </li>
             `;
         }).join('')}
         </ul>
-        <div class="bill-total">Celkem: ${total} Kč</div>
-        ${allPaid 
-        ? `<div style="font-size:1.16em;font-weight:bold;background:#198754;color:#fff;border-radius:8px;padding:7px 0;text-align:center;margin-top:14px;">ZAPLACENO</div>`
-: `<button class="btn btn-pay" onclick="showConfirmModal(${t.table_number})" ${!canPayAll ? 'disabled' : ''} style="${!canPayAll ? 'opacity:0.5;background:#dc3545;' : 'background:#28a745;'}">
-     ${!canPayAll ? 'ČEKÁ SE NA DORUČENÍ' : 'ZAPLATIT VŠE'}
+        <div class="bill-total">Zbývá k úhradě: ${formatCurrency(outstandingAmount)}</div>
+    </div>
+    <div class="order-actions">
+   <button class="btn btn-pay" onclick="payAll(${t.table_number}, this)" ${!hasAnyItems ? 'disabled' : ''} style="${!hasAnyItems ? 'opacity:0.5;' : ''}">
+     ZAPLATIT VŠE
    </button>
    <button class="btn btn-split" onclick="paySplit(${t.table_number}, this)" ${!hasAnyItems ? 'disabled' : ''} style="${!hasAnyItems ? 'opacity:0.5;' : ''}">
      ROZDĚLIT ÚČET
    </button>
 
-   <button class="btn btn-change-table" onclick="showTableChangeModal(${t.table_number}, '${t.table_code}', ${total})">
+   <button class="btn btn-change-table" onclick="showTableChangeModal(${t.table_number}, '${t.table_code}', ${outstandingAmount})">
      ZMĚNIT STŮL
-   </button>`}
+   </button>
     </div>
-    ${t.paidAmount > 0 ? `
-    <div class="previous-payment-info">
-        Uhrazeno: ${t.paidAmount} Kč<br>
-        Zbývá: ${t.remainingAmount} Kč
-    </div>
-    ` : ''}
 </div>
 `;
     }).join('');
@@ -1183,7 +1145,7 @@ function showSplitModal(outstandingItems, billData) {
 
     modalBg.innerHTML = `
         <div class="modal" style="max-width: 800px; max-height: 90vh; overflow-y: auto;">
-            <h3>💰 Účtenka pro stůl ${lastSplitTable}</h3>
+            <h3>💰 Účtenka pro stůl ${getTableCodeByNumber(lastSplitTable)}</h3>
             
             <!-- Outstanding Items Section -->
             <div class="receipt-items-section" style="margin-bottom: 20px;">
@@ -1436,73 +1398,57 @@ function payAll(table_number, btn, paymentMethod = 'cash') {
     if (btn) { btn.disabled = true; btn.textContent = 'Zpracovávám...'; }
     console.log('PayAll called for table:', table_number, 'payment method:', paymentMethod);
     
-    fetch(API + '?action=session-bill&table_number=' + table_number)
+    fetch(API + '?action=get-bill&table=' + table_number)
     .then(r=>r.json())
     .then(res => {
-        console.log('Session bill response:', res);
+        console.log('Get bill response:', res);
+        if (!res.success) {
+            throw new Error(res.error || 'Chyba při načítání účtu');
+        }
+        
         const items = res.data.items || [];
         
-        // ✅ OPRAVA: Kontroluj jen nezrušené položky
-        const activeItems = items.filter(i => i.status !== 'cancelled');
-        const unpaidItems = activeItems.filter(i => i.status !== 'paid');
-        const allDelivered = unpaidItems.every(i => i.status === 'delivered');
-        
-        console.log('Active items:', activeItems.length, 'Unpaid:', unpaidItems.length, 'All delivered:', allDelivered);
-
-        if (!allDelivered) {
-            if (btn) { 
-                btn.disabled = true; 
-                btn.textContent = 'ČEKÁ SE NA DORUČENÍ'; 
-            }
-            return;
-        }
-
-        const payItems = items
-            .filter(i => i.status === 'delivered')
-            .map(i => ({
-                id: i.id,
-                quantity: Number(i.quantity)
-            }));
-
-        if (payItems.length === 0) {
+        if (items.length === 0) {
             if (btn) { btn.disabled = false; btn.textContent = 'ZAPLATIT VŠE'; }
             loadTables();
             return;
         }
 
-        // ✅ NOVÁ LOGIKA: Zkontroluj jestli se platí všechny zbývající položky
-        const allActiveItems = activeItems.length;
-        const payingItemsCount = payItems.length;
-        const alreadyPaidCount = items.filter(i => i.status === 'paid').length;
-        const willBeFullyPaid = (payingItemsCount + alreadyPaidCount) >= allActiveItems;
-        
-        console.log('Will be fully paid:', willBeFullyPaid, 'Paying:', payingItemsCount, 'Already paid:', alreadyPaidCount, 'Total active:', allActiveItems);
-
-        // ✅ PŘIDEJ payment_method a flag pro úplné zaplacení
-        fetch(API + '?action=pay-items', {
+        // Create receipt request for full payment (empty items array means pay all)
+        fetch(API + '?action=create-receipt', {
             method: 'POST',
             headers: {'Content-Type':'application/json'},
             body: JSON.stringify({
-                items: payItems,
+                table: table_number,
                 payment_method: paymentMethod,
-                table_number: table_number,  // ✅ PŘIDÁNO
-                close_session: willBeFullyPaid  // ✅ PŘIDÁNO - signalizuje že se má uzavřít session
+                employee_name: 'Admin', // Default employee name
+                print: true,
+                items: [] // Empty items array means pay all outstanding
             })
         })
         .then(r=>r.json())
         .then(res => {
-            console.log('Pay items response:', res);
+            console.log('Create receipt response:', res);
+            if (!res.success) {
+                throw new Error(res.error || 'Chyba při vytváření účtenky');
+            }
+            
+            const receiptNumber = res.data.receipt_number || res.data.number;
+            alert(`Účtenka #${receiptNumber} vytvořena a vytištěna.`);
+            
             if (btn) { btn.disabled = false; btn.textContent = 'ZAPLATIT VŠE'; }
             loadTables();
         })
         .catch(error => {
-            console.error('Error paying items:', error);
+            console.error('Error creating receipt:', error);
             if (btn) { btn.disabled = false; btn.textContent = 'ZAPLATIT VŠE'; }
+            alert('Chyba při platbě: ' + error.message);
         });
     })
     .catch(error => {
-        console.error('Error loading session bill:', error);
+        console.error('Error loading bill:', error);
         if (btn) { btn.disabled = false; btn.textContent = 'ZAPLATIT VŠE'; }
+        alert('Chyba při načítání účtu: ' + error.message);
     });
 }
 
@@ -1883,8 +1829,17 @@ window.getStatusText = getStatusText;
 window.getBillItemClass = getBillItemClass;
 
 // Helper function to get item value with fallback (handles API field variability)
-function getItemValue(item, primaryKey, fallbackKey) {
-    return item[primaryKey] !== undefined ? item[primaryKey] : item[fallbackKey];
+function getItemValue(item, primaryKey, fallbackKey, fallbackKey2) {
+    if (item[primaryKey] !== undefined) return item[primaryKey];
+    if (fallbackKey && item[fallbackKey] !== undefined) return item[fallbackKey];
+    if (fallbackKey2 && item[fallbackKey2] !== undefined) return item[fallbackKey2];
+    return undefined;
+}
+
+// Helper function to get table code by number
+function getTableCodeByNumber(tableNumber) {
+    const table = tables.find(t => t.table_number == tableNumber);
+    return table ? (table.table_code || `Stůl ${tableNumber}`) : `Stůl ${tableNumber}`;
 }
 
 // Helper function to format date/time
