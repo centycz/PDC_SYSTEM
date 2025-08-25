@@ -113,20 +113,20 @@ $full_name = $_SESSION['order_full_name'] ?? '';
 
 // Define tabs based on roles
 function canAccessTab($tab, $user_role) {
-    if (!$user_role) return false; // Not logged in
-    
+    if (!$user_role) return false;
+
     $tab_permissions = [
-        'restaurant' => ['admin', 'ragazzi', 'user'],
-        'status' => ['admin', 'ragazzi', 'user'],
-        'reservations' => ['admin', 'ragazzi', 'user'],
-        'orders' => ['admin', 'ragazzi'],
-        'shifts' => ['admin', 'ragazzi', 'user'],
-        'payroll' => ['admin', 'ragazzi'],
-        'finance' => ['admin', 'ragazzi'],  // New tab
-        'statistics' => ['admin', 'ragazzi'],
-        'phpmyadmin' => ['admin'] // Only admin
+        'restaurant'   => ['admin','ragazzi','user','recepce'],
+        'status'       => ['admin','ragazzi','user','recepce'],
+        'reservations' => ['admin','ragazzi','user','recepce'], // všichni čtou, omezení tvorby řešíme jinde
+        'orders'       => ['admin','ragazzi'],
+        'shifts'       => ['admin','ragazzi','user','recepce'],
+        'payroll'      => ['admin','ragazzi'],
+        'finance'      => ['admin','ragazzi'],
+        'statistics'   => ['admin','ragazzi'],
+        'phpmyadmin'   => ['admin']
     ];
-    
+
     return in_array($user_role, $tab_permissions[$tab] ?? []);
 }
 ?>
