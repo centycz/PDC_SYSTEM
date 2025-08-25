@@ -1,33 +1,22 @@
 <?php
-session_start();
-header('Content-Type: application/json');
+require_once __DIR__ . '/../../includes/reservations_lib.php';
+header('Content-Type: application/json; charset=utf-8');
 
-if (!isset($_SESSION['order_user'])) {
-    http_response_code(401);
-    echo json_encode(['ok'=>false,'error'=>'Neautorizovanı pøístup']);
-    exit;
+if ($_SERVER['REQUEST_METHOD'] !== 'POST') {
+    echo json_encode(['ok'=>false,'error'=>'Invalid method']); exit;
 }
 
-require_once __DIR__ . '/../../../includes/reservations_lib.php';
+$input = json_decode(file_get_contents('php://input'), true);
+if (!$input) {
+    echo json_encode(['ok'=>false,'error'=>'Empty body']); exit;
+}
+if (empty($input['id'])) {
+    echo json_encode(['ok'=>false,'error'=>'Missing id']); exit;
+}
 
 try {
-    $raw = file_get_contents('php://input');
-    $payload = json_decode($raw, true);
-    if (!is_array($payload)) {
-        throw new Exception('Neplatnı JSON');
-    }
-    if (empty($payload['id'])) {
-        throw new Exception('Chybí ID');
-    }
-    $id = (int)$payload['id'];
-    unset($payload['id']);
-
-    $result = updateReservation($id, $payload);
-    if (!$result['ok']) {
-        http_response_code(400);
-    }
+    $result = updateReservation($input);
     echo json_encode($result);
-} catch (Exception $e) {
-    http_response_code(500);
+} catch (Throwable $e) {
     echo json_encode(['ok'=>false,'error'=>$e->getMessage()]);
 }
