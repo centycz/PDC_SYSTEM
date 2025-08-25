@@ -2682,6 +2682,66 @@ if ($action === 'update-reservation') {
         }
     }
 
+    // REPRINT RECEIPT - Reprint an existing receipt by receipt number
+    if ($action === 'reprint-receipt') {
+        $receipt_number = intval($_GET['receipt_number'] ?? 0);
+        
+        if (!$receipt_number) {
+            jsend(false, null, 'Chybí číslo účtu!');
+            exit;
+        }
+        
+        try {
+            $pdo->beginTransaction();
+            
+            // Find the receipt
+            $receiptQuery = $pdo->prepare("
+                SELECT * FROM completed_payments 
+                WHERE receipt_number = ?
+            ");
+            $receiptQuery->execute([$receipt_number]);
+            $receipt = $receiptQuery->fetch(PDO::FETCH_ASSOC);
+            
+            if (!$receipt) {
+                $pdo->rollback();
+                jsend(false, null, 'Účet nenalezen!');
+                exit;
+            }
+            
+            // Update reprint count and printed timestamp
+            $updateQuery = $pdo->prepare("
+                UPDATE completed_payments 
+                SET reprint_count = reprint_count + 1, 
+                    printed_at = NOW() 
+                WHERE receipt_number = ?
+            ");
+            $updateQuery->execute([$receipt_number]);
+            
+            $pdo->commit();
+            
+            // Decode items for response
+            $items = json_decode($receipt['items_json'], true) ?? [];
+            
+            jsend(true, [
+                'receipt_number' => intval($receipt['receipt_number']),
+                'table_number' => intval($receipt['table_number']),
+                'total_amount' => floatval($receipt['total_amount']),
+                'items_count' => intval($receipt['items_count']),
+                'items' => $items,
+                'payment_method' => $receipt['payment_method'],
+                'employee_name' => $receipt['employee_name'],
+                'original_paid_at' => $receipt['paid_at'],
+                'reprinted_at' => date('Y-m-d H:i:s'),
+                'reprint_count' => intval($receipt['reprint_count']) + 1
+            ]);
+            
+        } catch (Exception $e) {
+            $pdo->rollback();
+            error_log("reprint-receipt error: " . $e->getMessage());
+            jsend(false, null, 'Chyba při opakovaném tisku: ' . $e->getMessage());
+        }
+    }
+
     // DEFAULT CASE
     jsend(false, null, 'Neznámá akce: ' . $action);
 
