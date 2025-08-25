@@ -1084,13 +1084,16 @@ function getTableCountText(count) {
         }
 
         function openConfirmModal() {
-            if (!cart.length || !selectedTable) return;
+            if (!cart || !cart.length || !selectedTable) return;
             
             // Populate modal with order details
             populateConfirmModal();
             
             // Show modal
-            document.getElementById('confirmOrderModal').style.display = 'block';
+            const modal = document.getElementById('confirmOrderModal');
+            if (modal) {
+                modal.style.display = 'block';
+            }
         }
 
         function populateConfirmModal() {
@@ -1101,57 +1104,70 @@ function getTableCountText(count) {
             
             // Aggregate identical items (same name, price, and note)
             const aggregatedItems = {};
-            cart.forEach(item => {
-                const key = `${item.name}_${item.price}_${item.note || ''}`;
-                if (aggregatedItems[key]) {
-                    aggregatedItems[key].qty += item.qty;
-                } else {
-                    aggregatedItems[key] = {
-                        name: item.name,
-                        price: item.price,
-                        qty: item.qty,
-                        note: item.note
-                    };
-                }
-            });
+            if (cart && cart.length > 0) {
+                cart.forEach(item => {
+                    const key = `${item.name}_${item.price}_${item.note || ''}`;
+                    if (aggregatedItems[key]) {
+                        aggregatedItems[key].qty += item.qty;
+                    } else {
+                        aggregatedItems[key] = {
+                            name: item.name,
+                            price: item.price,
+                            qty: item.qty,
+                            note: item.note
+                        };
+                    }
+                });
+            }
             
             // Populate items table
             const itemsContainer = document.getElementById('confirmOrderItems');
-            itemsContainer.innerHTML = '';
-            
-            let totalQty = 0;
-            let totalPrice = 0;
-            
-            Object.values(aggregatedItems).forEach(item => {
-                totalQty += item.qty;
-                const lineTotal = item.price * item.qty;
-                totalPrice += lineTotal;
+            if (itemsContainer) {
+                itemsContainer.innerHTML = '';
                 
-                const row = document.createElement('tr');
-                row.innerHTML = `
-                    <td style="padding: 8px; border-bottom: 1px solid #f1f3f4;">
-                        ${escapeHtml(item.name)}
-                        ${item.note ? `<br><small style="color: #666;">📝 ${escapeHtml(item.note)}</small>` : ''}
-                    </td>
-                    <td style="padding: 8px; text-align: center; border-bottom: 1px solid #f1f3f4;">${item.qty}</td>
-                    <td style="padding: 8px; text-align: right; border-bottom: 1px solid #f1f3f4;">${lineTotal} Kč</td>
-                `;
-                itemsContainer.appendChild(row);
-            });
-            
-            // Set totals
-            document.getElementById('confirmTotalQty').textContent = totalQty;
-            document.getElementById('confirmTotalPrice').textContent = totalPrice;
+                let totalQty = 0;
+                let totalPrice = 0;
+                
+                const itemsArray = Object.values(aggregatedItems);
+                itemsArray.forEach(item => {
+                    totalQty += item.qty;
+                    const lineTotal = item.price * item.qty;
+                    totalPrice += lineTotal;
+                    
+                    const row = document.createElement('tr');
+                    row.innerHTML = `
+                        <td style="padding: 8px; border-bottom: 1px solid #f1f3f4;">
+                            ${escapeHtml(item.name)}
+                            ${item.note ? `<br><small style="color: #666;">📝 ${escapeHtml(item.note)}</small>` : ''}
+                        </td>
+                        <td style="padding: 8px; text-align: center; border-bottom: 1px solid #f1f3f4;">${item.qty}</td>
+                        <td style="padding: 8px; text-align: right; border-bottom: 1px solid #f1f3f4;">${lineTotal} Kč</td>
+                    `;
+                    itemsContainer.appendChild(row);
+                });
+                
+                // Set totals
+                const totalQtyEl = document.getElementById('confirmTotalQty');
+                const totalPriceEl = document.getElementById('confirmTotalPrice');
+                if (totalQtyEl) totalQtyEl.textContent = totalQty;
+                if (totalPriceEl) totalPriceEl.textContent = totalPrice;
+            }
             
             // Set customer note (limit display to 120 chars)
-            const customerName = document.getElementById('customerName').value.trim();
+            const customerNameEl = document.getElementById('customerName');
+            const customerName = customerNameEl ? customerNameEl.value.trim() : '';
             const displayNote = customerName || '(bez poznámky)';
             const truncatedNote = displayNote.length > 120 ? displayNote.substring(0, 120) + '...' : displayNote;
-            document.getElementById('confirmCustomerNote').textContent = truncatedNote;
+            const noteEl = document.getElementById('confirmCustomerNote');
+            if (noteEl) noteEl.textContent = truncatedNote;
             
             // Set reservation status
-            const isReserved = document.getElementById('isReserved').checked;
-            document.getElementById('confirmIsReserved').checked = isReserved;
+            const isReservedEl = document.getElementById('isReserved');
+            const confirmIsReservedEl = document.getElementById('confirmIsReserved');
+            if (isReservedEl && confirmIsReservedEl) {
+                const isReserved = isReservedEl.checked;
+                confirmIsReservedEl.checked = isReserved;
+            }
         }
 
         function closeConfirmModal() {
