@@ -76,11 +76,18 @@ function sendToPrinter($order_id, $pdo) {
         }
         
         $order = $items[0];
+        
+        // Sanitize and trim customer_name with optional whitespace collapse
+        $customer_name = '';
+        if (!empty($order['customer_name'])) {
+            $customer_name = preg_replace('/\s+/u', ' ', trim($order['customer_name']));
+        }
+        
         $print_data = [
             'order_id' => $order['id'],
             'table_code' => $order['table_code'] ?? $order['table_number'],
             'employee_name' => $order['employee_name'],
-            'customer_name' => $order['customer_name'],
+            'customer_name' => $customer_name,
             'created_at' => $order['created_at'],
             'items' => []
         ];
