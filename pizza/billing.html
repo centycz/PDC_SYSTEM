@@ -1033,32 +1033,13 @@ function showConfirmModal(table_number) {
     }
     
     let totalAmount = 0;
-    let deliveredAmount = 0;
     
-    if (table && table.billItems) {
-        // ✅ DEBUGOVÁNÍ - vypíšeme všechny položky
-        console.log('Calculating amounts...');
-        
-        // Spočítej celkovou částku VŠECH nezrušených položek
-        totalAmount = table.billItems
-            .filter(item => item.status !== 'cancelled')
-            .reduce((sum, item) => {
-                const itemTotal = item.qty * item.unit_price;
-                console.log(`Adding to total: ${item.item_name} (${item.status}) = ${itemTotal} Kč`);
-                return sum + itemTotal;
-            }, 0);
-            
-        // Jen doručené položky k zaplacení
-        deliveredAmount = table.billItems
-            .filter(item => item.status === 'delivered')
-            .reduce((sum, item) => {
-                const itemTotal = item.qty * item.unit_price;
-                console.log(`Adding to delivered: ${item.item_name} = ${itemTotal} Kč`);
-                return sum + itemTotal;
-            }, 0);
+    if (table && table.outstandingAmount) {
+        totalAmount = table.outstandingAmount;
+        console.log('Outstanding amount:', totalAmount);
     }
     
-    console.log('Final amounts - Total:', totalAmount, 'Delivered:', deliveredAmount);
+    console.log('Final amount:', totalAmount);
     console.log('=== END DEBUG ===');
     
     const modalBg = document.getElementById('modal-bg');
@@ -1077,25 +1058,9 @@ function showConfirmModal(table_number) {
                     margin-bottom: 10px;
                     text-align: center;
                 ">
-                    <div style="font-size: 14px; color: #1976D2; margin-bottom: 8px;">💰 Celková částka objednávky</div>
+                    <div style="font-size: 14px; color: #1976D2; margin-bottom: 8px;">💰 Zbývající částka k úhradě</div>
                     <div style="font-size: 24px; font-weight: bold; color: #1976D2;">${totalAmount} Kč</div>
                 </div>
-                
-                                
-                ${totalAmount > deliveredAmount ? `
-                    <div style="
-                        background: #fff3e0;
-                        border: 1px solid #ff9800;
-                        border-radius: 5px;
-                        padding: 8px;
-                        margin-top: 10px;
-                        text-align: center;
-                        font-size: 12px;
-                        color: #e65100;
-                    ">
-                        ℹ️ Zbývající položky (${totalAmount - deliveredAmount} Kč) se zaplatí po doručení
-                    </div>
-                ` : ''}
             </div>
             
             <div class="payment-method-section">
@@ -1115,7 +1080,7 @@ function showConfirmModal(table_number) {
             </div>
 
             <div class="confirm-modal-btns">
-                <button class="confirm-modal-btn ok" onclick="confirmPayAll()">ZAPLATIT ${deliveredAmount} Kč</button>
+                <button class="confirm-modal-btn ok" onclick="confirmPayAll()">ZAPLATIT ${totalAmount} Kč</button>
                 <button class="confirm-modal-btn cancel" onclick="closeModal()">ZPĚT</button>
             </div>
         </div>
@@ -1181,11 +1146,6 @@ function showSplitModal(outstandingItems, billData) {
                         <input type="radio" id="split-payment-card" name="split-payment-method" value="card">
                         <div class="modal-payment-icon">💳</div>
                         <div class="modal-payment-text">Karta</div>
-                    </label>
-                    <label class="modal-payment-option" for="split-payment-voucher">
-                        <input type="radio" id="split-payment-voucher" name="split-payment-method" value="voucher">
-                        <div class="modal-payment-icon">🎫</div>
-                        <div class="modal-payment-text">Stravenky</div>
                     </label>
                 </div>
             </div>
@@ -1285,8 +1245,7 @@ function generateReceiptHistoryHTML(priorReceipts) {
                         
                         const paymentMethodText = {
                             'cash': 'Hotovost',
-                            'card': 'Karta', 
-                            'voucher': 'Stravenky'
+                            'card': 'Karta'
                         }[paymentMethod] || paymentMethod;
                         
                         return `
