@@ -27,6 +27,28 @@
             gap: 15px;
             margin-bottom: 20px;
         }
+                 .piaggio .table-btn.to_clean {
+             background: linear-gradient(135deg, #fbbf24, #f59e0b); 
+             border-left-color: #fbbf24;
+         }
+ 
++        /* NOVÁ LOKACE VENKU */
++        .venku .table-btn { 
++            border-left: 3px solid #0EA5E9; 
++            background: linear-gradient(135deg,#f0f9ff,#e0f2fe);
++        }
++        .venku .table-btn:hover {
++            border-color:#0284C7;
++            background: linear-gradient(135deg,#e0f2fe,#bae6fd);
++        }
++        .venku .table-btn.occupied {
++            background: linear-gradient(135deg,#e53e3e,#c53030);
++            border-left-color:#e53e3e;
++        }
++        .venku .table-btn.to_clean {
++            background: linear-gradient(135deg,#fbbf24,#f59e0b);
++            border-left-color:#fbbf24;
++        }
         
         /* RESPONZIVNÍ GRID PRO PERGOLY */
         @media (min-width: 769px) and (max-width: 1024px) {
@@ -236,7 +258,8 @@
             .tables-grid.medium, 
             .tables-grid.large,
             .tables-grid.sebou,
-            .tables-grid.piaggio {
+            .tables-grid.piaggio,
+            .tables-grid.venku {
                 grid-template-columns: repeat(4, 1fr);
             }
         }
@@ -520,6 +543,13 @@
                 <label for="customerName">Jméno zákazníka:</label>
                 <input type="text" id="customerName" class="item-note" placeholder="Jméno zákazníka">
             </div>
+            <div style="margin-top: 10px;">
+                <label for="isReserved" style="display: flex; align-items: center; gap: 8px; cursor: pointer;">
+                    <input type="checkbox" id="isReserved" style="transform: scale(1.2);">
+                    <span>📅 Rezervovaná objednávka</span>
+                </label>
+                <small style="color: #666; margin-left: 24px;">Zaškrtněte pro hosty s rezervací</small>
+            </div>
             <div class="cart-footer">
                 <span class="cart-sum" id="cartSum"></span>
                 <button class="cart-btn" id="cartSubmit" onclick="submitOrder()">Odeslat objednávku</button>
@@ -664,6 +694,7 @@
             
             cart = [];
             document.getElementById('customerName').value = '';
+            document.getElementById('isReserved').checked = false;
             renderCart();
             
             console.log('✅ Cart cleared successfully - new cart length:', cart.length);
@@ -711,13 +742,14 @@
             // ✅ OPRAVENÉ MAPOVÁNÍ - PIAGGIO S JEDNÍM STOLEM XX
             const pergolOrder = [
                 { name: '🌿 Pergola 1', key: 'Pergola 1', tables: ['P11', 'P12', 'P13', 'P14'], cssClass: 'pergola-1 small' },
-                { name: '🌿 Pergola 2', key: 'Pergola 2', tables: ['P21', 'P22', 'P23', 'P24', 'P25'], cssClass: 'pergola-2 medium' },
-                { name: '🌿 Pergola 3', key: 'Pergola 3', tables: ['P31', 'P32', 'P33', 'P34', 'P35'], cssClass: 'pergola-3 medium' },
+                { name: '🌿 Pergola 2', key: 'Pergola 2', tables: ['P21', 'P22', 'P23', 'P24', 'P25a', 'P25b'], cssClass: 'pergola-2 medium' },
+              { name: '🌿 Pergola 3', key: 'Pergola 3', tables: ['P31', 'P32', 'P33', 'P34', 'P35a', 'P35b'], cssClass: 'pergola-3 medium' },
                 { name: '🌿 Pergola 4', key: 'Pergola 4', tables: ['P41', 'P42', 'P43'], cssClass: 'pergola-4 small' },
                 { name: '🫒 Olivy', key: 'Olivy', tables: ['O1', 'O2', 'O3', 'O4', 'O5', 'O6', 'O7', 'O8'], cssClass: 'olivy large' },
-                { name: '📦 Sebou', key: 'Sebou', tables: ['S1', 'S2', 'S3', 'S4', 'S5', 'S6'], cssClass: 'sebou sebou' },
+                { name: '📦 Sebou', key: 'Sebou', tables: ['S1', 'S2', 'S3', 'S4', 'S5', 'S6', 'S7', 'S8', 'S9'], cssClass: 'sebou sebou' },
                 { name: '🚗 Auto', key: 'Auto', tables: ['A1', 'A2'], cssClass: 'auto small' },
-                { name: '🛵 Piaggio', key: 'PIAGGIO', tables: ['XX'], cssClass: 'piaggio piaggio' }
+                { name: '🛵 Piaggio', key: 'PIAGGIO', tables: ['XX'], cssClass: 'piaggio piaggio' },
+                { name: '🌤️ Venku', key: 'VENKU', tables: ['V1','V2','V3'], cssClass: 'venku small' }
                 
             ];
 
@@ -793,6 +825,7 @@
                         if (key === 'Auto') return '🚗';
                         if (key === 'PIAGGIO') return '🛵';
                         if (key === 'Sebou') return '📦';
+                        if (key === 'VENKU') return '🌤️';
                         return '';
                     };
                     
@@ -989,25 +1022,19 @@ function getTableCountText(count) {
             renderCart();
         }
 
-        // ROBUST ORDER SUBMISSION WITH DOUBLE-CLICK PREVENTION
-        let submittingOrder = false;
+        // OPRAVENÁ FUNKCE PRO OBJEDNÁVKY
         async function submitOrder() {
-            if (submittingOrder) {
-                console.log('Already submitting order, ignoring double-click');
-                return;
-            }
-            
             if (!cart.length || !selectedTable) return;
             
-            submittingOrder = true;
             console.log('=== SUBMIT ORDER START ===');
             console.log('Cart items before submission:', cart.length);
             
             const customerName = document.getElementById('customerName').value;
+            const isReserved = document.getElementById('isReserved').checked;
             const items = [];
-            let orderWasCreated = false;
+            let orderWasCreated = false; // 🔑 Track if order was successfully created
             
-            // Prepare items for database
+            // Příprava položek pro databázi
             cart.forEach(item => {
                 for (let i = 0; i < item.qty; i++) {
                     items.push({
@@ -1024,29 +1051,29 @@ function getTableCountText(count) {
                 table: selectedTable,
                 items,
                 customer_name: customerName,
-                employee_name: localStorage.getItem('employee_name')
+                employee_name: localStorage.getItem('employee_name'),
+                is_reserved: isReserved
             });
             
             // Disable button during processing
             const submitBtn = document.getElementById('cartSubmit');
             const originalText = submitBtn.textContent;
-            if (submitBtn) {
-                submitBtn.disabled = true;
-                submitBtn.textContent = 'Odesílám...';
-            }
+            submitBtn.disabled = true;
+            submitBtn.textContent = 'Odesílám...';
             
             const cartBackup = [...cart];
             showMsg('🔄 Odesílám objednávku...');
             
             try {
-                const response = await fetch('api/orders/create.php', {
+                const response = await fetch(API + '?action=add-order', {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json' },
                     body: JSON.stringify({
                         table: selectedTable,
                         items,
                         customer_name: customerName,
-                        employee_name: localStorage.getItem('employee_name')
+                        employee_name: localStorage.getItem('employee_name'),
+                        is_reserved: isReserved
                     })
                 });
                 
@@ -1058,7 +1085,6 @@ function getTableCountText(count) {
                     throw new Error(`Server error (${response.status})`);
                 }
                 
-                // Robust JSON parsing
                 let orderResponse;
                 try {
                     const responseText = await response.text();
@@ -1071,54 +1097,86 @@ function getTableCountText(count) {
                 
                 console.log('Parsed response:', orderResponse);
                 
-                // Check if order was successfully created
-                if (!orderResponse.ok) {
-                    throw new Error(orderResponse.error || 'Objednávka nebyla vytvořena');
-                }
+                // ✅ ZJEDNODUŠENÁ LOGIKA - pokud dostaneme order_id, košík se MUSÍ vymazat
+                const orderId = orderResponse.data?.order_id;
                 
-                const orderId = orderResponse.order_id;
                 if (orderId) {
+                    // 🔑 Označit že objednávka byla vytvořena
                     orderWasCreated = true;
                     
-                    // Clear cart immediately on successful order creation
-                    console.log('✅ ORDER CREATED:', orderId, '- CLEARING CART');
+                    // ✅ OKAMŽITÉ VYMAZÁNÍ KOŠÍKU - bez dalších podmínek
+                    console.log('✅ ORDER_ID RECEIVED:', orderId, '- CLEARING CART IMMEDIATELY');
                     clearCart();
                     console.log('✅ CART CLEARED - Current length:', cart.length);
                     
-                    // Handle printer status
-                    if (orderResponse.printer_unavailable) {
-                        showMsg('✅ Objednávka přijata (tisk nedostupný)', true);
+                    if (orderResponse.success) {
+                        showMsg('✅ Objednávka byla úspěšně odeslána!');
                     } else {
-                        showMsg('✅ Objednávka odeslána', false);
+                        showMsg('✅ Objednávka byla uložena, ale nastala chyba: ' + (orderResponse.error || 'Neznámá chyba'));
+                        console.warn('Order saved but with secondary error:', orderResponse.error);
+                    }
+                    
+                    const kitchenItems = items.filter(item => 
+                        ['pizza', 'pasta', 'predkrm', 'dezert'].includes(item.type)
+                    );
+                    
+                    if (kitchenItems.length > 0) {
+                        const table = tables.find(t => t.table_number == selectedTable);
+                        const tableCode = table ? table.table_code : `Stůl ${selectedTable}`;
+                        
+                        const printData = {
+                            order_id: orderId,
+                            table_code: tableCode,
+                            employee_name: localStorage.getItem('employee_name') || 'Neznámý',
+                            customer_name: customerName || '',
+                            created_at: new Date().toISOString(),
+                            items: kitchenItems.map(item => ({
+                                quantity: item.quantity,
+                                item_name: item.name,
+                                note: item.note || ''
+                            }))
+                        };
+                        
+                        console.log('Sending to printer:', printData);
+                        
+                        sendToPrinter(printData).then(printSuccess => {
+                            if (printSuccess) {
+                                showMsg('✅ Objednávka byla úspěšně odeslána a vytištěna!');
+                            } else {
+                                showMsg('⚠️ Objednávka byla odeslána, ale tisk se nezdařil.');
+                            }
+                        }).catch(err => {
+                            console.error('Print error:', err);
+                            showMsg('⚠️ Objednávka byla odeslána, ale chyba při tisku.');
+                        });
                     }
                     
                     refreshOrders();
                     refreshTables();
                     
                 } else {
-                    throw new Error('Chybné ID objednávky');
+                    // ❌ Objednávka nebyla vytvořena - pravá chyba
+                    console.error('❌ ORDER CREATION FAILED - No order_id received:', orderResponse.error);
+                    showMsg(orderResponse.error || 'Chyba při vytváření objednávky - zkuste to znovu', false);
                 }
-                
             } catch (error) {
                 console.error('❌ SUBMIT ERROR:', error);
                 
-                // Restore cart only if order was NOT created
+                // 🔑 ZJEDNODUŠENÁ LOGIKA - restore cart POUZE pokud objednávka NEBYLA vytvořena
                 if (!orderWasCreated && cartBackup.length > 0) {
                     cart = [...cartBackup];
                     renderCart();
-                    console.log('Cart restored from backup - order was NOT created');
+                    console.log('Cart restored from backup - order was NOT created, length:', cart.length);
                 } else if (orderWasCreated) {
                     console.log('Cart NOT restored - order WAS created successfully');
+                } else {
+                    console.log('Cart NOT restored - no backup available');
                 }
                 
-                showMsg('Chyba při odesílání: ' + error.message, true);
-                
+                showMsg('Chyba při odesílání: ' + error.message + ' - zkuste to znovu', false);
             } finally {
-                if (submitBtn) {
-                    submitBtn.disabled = false;
-                    submitBtn.textContent = originalText;
-                }
-                submittingOrder = false;
+                submitBtn.disabled = false;
+                submitBtn.textContent = originalText;
                 console.log('=== SUBMIT ORDER END ===');
                 console.log('Final cart length:', cart.length);
             }
@@ -1226,31 +1284,6 @@ function getTableCountText(count) {
         renderCart();
         refreshOrders();
         setTimeout(loop, 6000);
-        
-        // Helper function for print status display
-        function showPrintStatus(msg, isError) {
-            const el = document.getElementById('printStatus');
-            const messageEl = document.getElementById('printMessage');
-            if (!el || !messageEl) return;
-            
-            messageEl.textContent = msg;
-            el.classList.toggle('error', !!isError);
-            el.style.display = 'block';
-            
-            setTimeout(() => {
-                el.style.display = 'none';
-            }, 5000);
-        }
     </script>
-    
-    <!-- Print Status Display -->
-    <div id="printStatus" style="display:none; position: fixed; top: 10px; right: 10px; padding: 10px; background: #4CAF50; color: white; border-radius: 5px; z-index: 1000;">
-        <span id="printMessage"></span>
-    </div>
-    <style>
-        #printStatus.error {
-            background: #f44336;
-        }
-    </style>
 </body>
 </html>
