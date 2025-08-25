@@ -670,6 +670,7 @@
     const API = 'api/restaurant-api.php';
     let tables = [];
     let lastSplitTable = null, lastSplitGroups = [];
+    let lastSplitBillData = null; // Store bill data for receipt functionality
     let currentTableToPay = null;
 
     // ✅ NOVÁ LOGIKA - Rozdělí položky podle statusu místo seskupování
@@ -1161,15 +1162,15 @@ function showConfirmModal(table_number) {
     setupPaymentOptionListeners('.payment-option');
 }
 
-// MODAL PRO ROZDĚLENÍ ÚČTU
-function showSplitModal(groups) {
+// MODAL PRO ROZDĚLENÍ ÚČTU - ENHANCED WITH RECEIPT FUNCTIONALITY
+function showSplitModal(outstandingItems, billData) {
     const modalBg = document.getElementById('modal-bg');
     modalBg.style.display = 'flex';
 
-    if (!groups || groups.length === 0) {
+    if (!outstandingItems || outstandingItems.length === 0) {
         modalBg.innerHTML = `
             <div class="modal">
-                <h3>Žádné položky k zaplacení</h3>
+                <h3>Všechny položky jsou zaplaceny</h3>
                 <div class="modal-btns">
                     <button class="modal-btn cancel" onclick="closeModal()">ZPĚT</button>
                 </div>
@@ -1178,60 +1179,34 @@ function showSplitModal(groups) {
         return;
     }
 
-    // ✅ SPOČÍTEJ CELKOVOU ČÁSTKU VŠECH POLOŽEK
-    const totalAmount = groups.reduce((sum, item) => sum + (item.qty * item.unit_price), 0);
+    const priorReceipts = billData.prior_receipts || [];
 
     modalBg.innerHTML = `
-        <div class="modal">
-            <h3>Zaplacení vybraných položek</h3>
+        <div class="modal" style="max-width: 800px; max-height: 90vh; overflow-y: auto;">
+            <h3>💰 Účtenka pro stůl ${lastSplitTable}</h3>
             
-            <!-- ✅ PŘIDEJ CELKOVOU ČÁSTKU -->
-            <div class="split-total-display" style="
-                background: #f8f9fa;
-                border: 2px solid #2196F3;
-                border-radius: 8px;
-                padding: 12px;
-                margin: 10px 0;
-                text-align: center;
-                font-size: 16px;
-                font-weight: bold;
-                color: #2196F3;
-            ">
-                💰 Celková částka objednávky: ${totalAmount} Kč
+            <!-- Outstanding Items Section -->
+            <div class="receipt-items-section" style="margin-bottom: 20px;">
+                <div style="font-size: 1.2em; font-weight: bold; color: #f09819; margin-bottom: 15px; border-bottom: 2px solid #f09819; padding-bottom: 5px;">
+                    🍕 Nezaplacené položky
+                </div>
+                <table style="width: 100%; border-collapse: collapse; margin-bottom: 15px;">
+                    <thead>
+                        <tr>
+                            <th style="background: #f8f9fa; font-weight: bold; color: #333; padding: 8px 12px; text-align: left; border-bottom: 1px solid #ddd;">Položka</th>
+                            <th style="background: #f8f9fa; font-weight: bold; color: #333; padding: 8px 12px; text-align: left; border-bottom: 1px solid #ddd;">Cena/ks</th>
+                            <th style="background: #f8f9fa; font-weight: bold; color: #333; padding: 8px 12px; text-align: left; border-bottom: 1px solid #ddd;">Zbývá</th>
+                            <th style="background: #f8f9fa; font-weight: bold; color: #333; padding: 8px 12px; text-align: left; border-bottom: 1px solid #ddd;">K úhradě</th>
+                            <th style="background: #f8f9fa; font-weight: bold; color: #333; padding: 8px 12px; text-align: left; border-bottom: 1px solid #ddd;">Částka</th>
+                        </tr>
+                    </thead>
+                    <tbody id="split-items-tbody">
+                        ${generateOutstandingItemsHTML(outstandingItems)}
+                    </tbody>
+                </table>
             </div>
-            
-            <ul class="modal-list">
-                ${groups.map((i,idx)=>{
-                    if (i.qty === 1) {
-                        return `
-                        <li class="modal-item">
-                            <label>
-                                <input type="checkbox" class="split-check" data-groupidx="${idx}" checked>
-                                ${i.item_name}
-                                (${i.unit_price.toFixed(2)} Kč)
-                                ${i.note ? `<span class="bill-note">📝 ${i.note}</span>` : ""}
-                            </label>
-                        </li>
-                        `;
-                    } else {
-                        return `
-                        <li class="modal-item">
-                            <label>
-                                ${i.item_name}
-                                <div class="quantity-buttons">
-                                    <button class="quantity-button" onclick="changeQuantity(${idx}, -1)">-</button>
-                                    <input type="number" min="0" max="${i.qty}" value="0" class="split-qty" data-groupidx="${idx}" style="width:50px;margin:0 8px;font-size:1.1em;" oninput="updateModalTotal()">
-                                    <button class="quantity-button" onclick="changeQuantity(${idx}, 1)">+</button>
-                                </div>
-                                × (${i.unit_price.toFixed(2)} Kč/ks)
-                                ${i.note ? `<span class="bill-note">📝 ${i.note}</span>` : ""}
-                            </label>
-                        </li>
-                        `;
-                    }
-                }).join('')}
-            </ul>
-            
+
+            <!-- Payment Method Section -->
             <div class="modal-payment-section">
                 <div class="modal-payment-label">Vyberte způsob platby:</div>
                 <div class="modal-payment-options">
@@ -1245,32 +1220,190 @@ function showSplitModal(groups) {
                         <div class="modal-payment-icon">💳</div>
                         <div class="modal-payment-text">Karta</div>
                     </label>
+                    <label class="modal-payment-option" for="split-payment-voucher">
+                        <input type="radio" id="split-payment-voucher" name="split-payment-method" value="voucher">
+                        <div class="modal-payment-icon">🎫</div>
+                        <div class="modal-payment-text">Stravenky</div>
+                    </label>
                 </div>
             </div>
-            
-            <div class="modal-total" id="modal-total"></div>
+
+            <!-- Employee Name Section -->
+            <div style="margin: 15px 0;">
+                <div style="font-weight: bold; margin-bottom: 8px;">👨‍💼 Jméno obsluhy:</div>
+                <input type="text" id="split-employee-name" placeholder="Zadejte jméno obsluhy" style="width: 100%; padding: 10px; border: 2px solid #ddd; border-radius: 8px;">
+            </div>
+
+            <!-- Print Checkbox -->
+            <div style="text-align: center; margin: 15px 0;">
+                <label style="display: flex; align-items: center; justify-content: center; gap: 10px;">
+                    <input type="checkbox" id="split-print-checkbox" checked>
+                    <strong>📄 Vytisknout účtenku</strong>
+                </label>
+            </div>
+
+            <!-- Total Display -->
+            <div id="split-total-display" style="background: #ff5858; color: white; padding: 15px; border-radius: 8px; text-align: center; font-size: 1.4em; font-weight: bold; margin: 15px 0;">
+                Celkem k úhradě: 0 Kč
+            </div>
+
+            <!-- Receipt History Section -->
+            ${generateReceiptHistoryHTML(priorReceipts)}
+
             <div class="modal-btns">
-                <button class="modal-btn" onclick="confirmSplitPay()">ZAPLATIT VYBRANÉ</button>
+                <button class="modal-btn" id="split-create-receipt-btn" onclick="confirmSplitPay()">ZAPLATIT VYBRANÉ</button>
                 <button class="modal-btn cancel" onclick="closeModal()">ZPĚT</button>
             </div>
         </div>
     `;
 
-    updateModalTotal();
-
-    // Event listenery pro výběr platby
+    // Setup event listeners
     setupPaymentOptionListeners('.modal-payment-option');
-    
-    // Event listenery pro quantity inputy a checkboxy
-    Array.from(document.querySelectorAll('.split-qty')).forEach(input => {
-        input.addEventListener('input', updateModalTotal);
-    });
-    Array.from(document.querySelectorAll('.split-check')).forEach(cb => {
-        cb.addEventListener('change', updateModalTotal);
+    setupQuantityInputListeners();
+    calculateSplitTotal();
+}
+
+// Helper function to generate outstanding items HTML for receipt modal
+function generateOutstandingItemsHTML(outstandingItems) {
+    return outstandingItems.map((item, idx) => {
+        const outstandingQty = getItemValue(item, 'qty_outstanding', 'outstanding_qty');
+        const itemName = getItemValue(item, 'name', 'item_name');
+        const unitPrice = parseFloat(getItemValue(item, 'unit_price', 'price')) || 0;
+        const itemId = getItemValue(item, 'id', 'item_id');
+        
+        return `
+            <tr>
+                <td style="padding: 8px 12px; text-align: left; border-bottom: 1px solid #ddd;">${itemName}</td>
+                <td style="padding: 8px 12px; text-align: left; border-bottom: 1px solid #ddd;">${formatCurrency(unitPrice)}</td>
+                <td style="padding: 8px 12px; text-align: left; border-bottom: 1px solid #ddd;">${outstandingQty}</td>
+                <td style="padding: 8px 12px; text-align: left; border-bottom: 1px solid #ddd;">
+                    <input type="number" class="split-qty-input" min="0" max="${outstandingQty}" value="0" 
+                           data-item-id="${itemId}" data-unit-price="${unitPrice}" data-index="${idx}"
+                           style="width: 60px; padding: 4px 8px; border: 1px solid #ddd; border-radius: 4px; text-align: center;"
+                           onchange="calculateSplitTotal()">
+                </td>
+                <td class="split-item-amount" style="padding: 8px 12px; text-align: left; border-bottom: 1px solid #ddd;">0 Kč</td>
+            </tr>
+        `;
+    }).join('');
+}
+
+// Helper function to generate receipt history HTML
+function generateReceiptHistoryHTML(priorReceipts) {
+    if (!priorReceipts || priorReceipts.length === 0) {
+        return `
+            <div style="margin-top: 20px; border-top: 2px solid #f09819; padding-top: 15px; display: none;" id="split-history-section">
+                <div style="font-size: 1.1em; font-weight: bold; color: #f09819; margin-bottom: 10px;">📋 Historie účtenek</div>
+                <div style="text-align: center; padding: 20px; color: #666;">Žádné předchozí účtenky</div>
+            </div>
+        `;
+    }
+
+    return `
+        <div style="margin-top: 20px; border-top: 2px solid #f09819; padding-top: 15px;" id="split-history-section">
+            <div style="font-size: 1.1em; font-weight: bold; color: #f09819; margin-bottom: 10px;">📋 Historie účtenek pro tento stůl</div>
+            <table style="width: 100%; border-collapse: collapse; font-size: 0.9em;">
+                <thead>
+                    <tr>
+                        <th style="background: #f8f9fa; font-weight: bold; padding: 6px 10px; text-align: left; border-bottom: 1px solid #eee;">Číslo</th>
+                        <th style="background: #f8f9fa; font-weight: bold; padding: 6px 10px; text-align: left; border-bottom: 1px solid #eee;">Částka</th>
+                        <th style="background: #f8f9fa; font-weight: bold; padding: 6px 10px; text-align: left; border-bottom: 1px solid #eee;">Způsob platby</th>
+                        <th style="background: #f8f9fa; font-weight: bold; padding: 6px 10px; text-align: left; border-bottom: 1px solid #eee;">Obsluha</th>
+                        <th style="background: #f8f9fa; font-weight: bold; padding: 6px 10px; text-align: left; border-bottom: 1px solid #eee;">Čas</th>
+                        <th style="background: #f8f9fa; font-weight: bold; padding: 6px 10px; text-align: left; border-bottom: 1px solid #eee;">Akce</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    ${priorReceipts.map(receipt => {
+                        const receiptNumber = getItemValue(receipt, 'receipt_number', 'number');
+                        const totalAmount = parseFloat(getItemValue(receipt, 'total_amount', 'amount')) || 0;
+                        const paymentMethod = getItemValue(receipt, 'payment_method', 'method') || 'cash';
+                        const employeeName = getItemValue(receipt, 'employee_name', 'employee') || '-';
+                        const createdAt = getItemValue(receipt, 'paid_at', 'created_at');
+                        
+                        const paymentMethodText = {
+                            'cash': 'Hotovost',
+                            'card': 'Karta', 
+                            'voucher': 'Stravenky'
+                        }[paymentMethod] || paymentMethod;
+                        
+                        return `
+                            <tr>
+                                <td style="padding: 6px 10px; text-align: left; border-bottom: 1px solid #eee;">#${receiptNumber}</td>
+                                <td style="padding: 6px 10px; text-align: left; border-bottom: 1px solid #eee;">${formatCurrency(totalAmount)}</td>
+                                <td style="padding: 6px 10px; text-align: left; border-bottom: 1px solid #eee;">${paymentMethodText}</td>
+                                <td style="padding: 6px 10px; text-align: left; border-bottom: 1px solid #eee;">${employeeName}</td>
+                                <td style="padding: 6px 10px; text-align: left; border-bottom: 1px solid #eee;">${formatDateTime(createdAt)}</td>
+                                <td style="padding: 6px 10px; text-align: left; border-bottom: 1px solid #eee;">
+                                    <button onclick="reprintReceipt(${receiptNumber})" 
+                                            style="background: #28a745; color: white; border: none; padding: 4px 8px; border-radius: 4px; cursor: pointer; font-size: 0.8em;">
+                                        Reprint
+                                    </button>
+                                </td>
+                            </tr>
+                        `;
+                    }).join('')}
+                </tbody>
+            </table>
+        </div>
+    `;
+}
+
+// Setup quantity input listeners
+function setupQuantityInputListeners() {
+    document.querySelectorAll('.split-qty-input').forEach(input => {
+        input.addEventListener('input', calculateSplitTotal);
+        input.addEventListener('change', calculateSplitTotal);
     });
 }
 
-// Společná funkce pro nastavení event listenerů pro výběr platby
+// Calculate total for split modal
+function calculateSplitTotal() {
+    const qtyInputs = document.querySelectorAll('.split-qty-input');
+    let total = 0;
+    
+    qtyInputs.forEach(input => {
+        const qty = parseInt(input.value) || 0;
+        const unitPrice = parseFloat(input.dataset.unitPrice) || 0;
+        const amount = qty * unitPrice;
+        
+        // Update item amount display
+        const row = input.closest('tr');
+        const amountCell = row.querySelector('.split-item-amount');
+        if (amountCell) {
+            amountCell.textContent = formatCurrency(amount);
+        }
+        
+        total += amount;
+    });
+    
+    const totalDisplay = document.getElementById('split-total-display');
+    if (totalDisplay) {
+        totalDisplay.textContent = `Celkem k úhradě: ${formatCurrency(total)}`;
+    }
+}
+
+// Reprint receipt function
+async function reprintReceipt(receiptNumber) {
+    try {
+        const response = await fetch(`${API}?action=reprint-receipt&receipt_number=${receiptNumber}`, {
+            method: 'POST'
+        });
+        
+        const result = await response.json();
+        
+        if (result.success) {
+            alert('Reprint odeslán.');
+        } else {
+            throw new Error(result.error || 'Chyba při reprinta');
+        }
+        
+    } catch (error) {
+        console.error('Error reprinting receipt:', error);
+        alert('Chyba při reprinta: ' + error.message);
+    }
+}
+
 function setupPaymentOptionListeners(selector) {
     document.querySelectorAll(selector).forEach(option => {
         option.addEventListener('click', function() {
@@ -1375,170 +1508,149 @@ function payAll(table_number, btn, paymentMethod = 'cash') {
 
 function paySplit(table_number, btn) {
     lastSplitTable = table_number;
-    fetch(API + '?action=session-bill&table_number=' + table_number)
+    // Use get-bill endpoint for receipt functionality
+    fetch(API + '?action=get-bill&table=' + table_number)
     .then(r=>r.json())
     .then(res => {
+        if (!res.success) {
+            alert('Chyba při načítání účtu: ' + (res.error || 'Neznámá chyba'));
+            return;
+        }
+        
         const items = res.data.items || [];
-        const deliveredUnpaid = items.filter(i => i.status === 'delivered' && i.status !== 'paid' && i.status !== 'cancelled');
-        lastSplitGroups = groupBillItems(deliveredUnpaid);
-        showSplitModal(lastSplitGroups);
+        const outstandingItems = items.filter(item => {
+            const outstandingQty = getItemValue(item, 'qty_outstanding', 'outstanding_qty');
+            return outstandingQty > 0;
+        });
+        
+        // Store the bill data for receipt functionality
+        lastSplitBillData = res.data;
+        showSplitModal(outstandingItems, res.data);
+    })
+    .catch(error => {
+        console.error('Error loading bill:', error);
+        alert('Chyba při načítání účtu: ' + error.message);
     });
 }
 
 function updateModalTotal() {
-    let sum = 0;
-    Array.from(document.querySelectorAll('.split-qty')).forEach((input) => {
-        const groupIdx = parseInt(input.dataset.groupidx, 10);
-        const val = parseInt(input.value, 10) || 0;
-        sum += val * lastSplitGroups[groupIdx].unit_price;
-    });
-    Array.from(document.querySelectorAll('.split-check')).forEach((cb) => {
-        if (cb.checked) {
-            const groupIdx = parseInt(cb.dataset.groupidx, 10);
-            sum += lastSplitGroups[groupIdx].unit_price;
-        }
-    });
-    
-    // ✅ SPOČÍTEJ CELKOVOU ČÁSTKU OBJEDNÁVKY
-    const totalOrderAmount = lastSplitGroups.reduce((total, item) => total + (item.qty * item.unit_price), 0);
-    const remaining = totalOrderAmount - sum;
-    
-    // ✅ NOVÉ ZOBRAZENÍ S ZVÝRAZNĚNÍM
-    document.getElementById('modal-total').innerHTML = `
-        <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 15px; margin-top: 15px;">
-            <div style="
-                background: #e8f5e8;
-                border: 2px solid #4CAF50;
-                border-radius: 8px;
-                padding: 12px;
-                text-align: center;
-            ">
-                <div style="font-size: 14px; color: #2E7D32; margin-bottom: 5px;">💳 Nyní zaplatit</div>
-                <div style="font-size: 18px; font-weight: bold; color: #2E7D32;">${sum} Kč</div>
-            </div>
-            
-            <div style="
-                background: ${remaining > 0 ? '#ffebee' : '#e8f5e8'};
-                border: 2px solid ${remaining > 0 ? '#f44336' : '#4CAF50'};
-                border-radius: 8px;
-                padding: 12px;
-                text-align: center;
-                ${remaining > 0 ? 'box-shadow: 0 2px 8px rgba(244, 67, 54, 0.3);' : ''}
-            ">
-                <div style="font-size: 14px; color: ${remaining > 0 ? '#c62828' : '#2E7D32'}; margin-bottom: 5px;">
-                    ${remaining > 0 ? '⚠️ Zbývá zaplatit' : '✅ Kompletně zaplaceno'}
-                </div>
-                <div style="
-                    font-size: ${remaining > 0 ? '22px' : '18px'}; 
-                    font-weight: bold; 
-                    color: ${remaining > 0 ? '#c62828' : '#2E7D32'};
-                    ${remaining > 0 ? 'text-shadow: 1px 1px 2px rgba(0,0,0,0.1);' : ''}
-                ">
-                    ${remaining} Kč
-                </div>
-            </div>
-        </div>
-        
-        ${remaining > 0 ? `
-            <div style="
-                background: #fff3cd;
-                border: 1px solid #ffeaa7;
-                border-radius: 5px;
-                padding: 8px;
-                margin-top: 10px;
-                text-align: center;
-                font-size: 12px;
-                color: #856404;
-            ">
-                💡 Po této platbě zůstane stůl aktivní pro doplacení zbývající částky
-            </div>
-        ` : `
-            <div style="
-                background: #d4edda;
-                border: 1px solid #c3e6cb;
-                border-radius: 5px;
-                padding: 8px;
-                margin-top: 10px;
-                text-align: center;
-                font-size: 12px;
-                color: #155724;
-            ">
-                ✅ Stůl bude po této platbě automaticky označen jako volný
-            </div>
-        `}
-    `;
+    // Legacy function - redirect to new implementation
+    calculateSplitTotal();
 }
 
-function confirmSplitPay() {
-    const splitPaymentMethod = document.querySelector('input[name="split-payment-method"]:checked').value;
-    console.log('Způsob platby (rozdělení):', splitPaymentMethod);
+async function confirmSplitPay() {
+    const createBtn = document.getElementById('split-create-receipt-btn');
     
-    const payArr = [];
-    Array.from(document.querySelectorAll('.split-qty')).forEach((input) => {
-        const groupIdx = parseInt(input.dataset.groupidx, 10);
-        let qty = parseInt(input.value, 10) || 0;
-        let group = lastSplitGroups[groupIdx];
-        let count = 0;
-        for (const id of group.ids) {
-            if (count < qty) {
-                payArr.push({ id: id, quantity: 1 });
-                count++;
+    try {
+        // Show loading state
+        createBtn.disabled = true;
+        createBtn.textContent = 'VYSTAVUJE SE...';
+        
+        // Get payment method
+        const paymentMethodInput = document.querySelector('input[name="split-payment-method"]:checked');
+        const paymentMethod = paymentMethodInput ? paymentMethodInput.value : 'cash';
+        
+        // Get employee name
+        const employeeName = document.getElementById('split-employee-name').value.trim();
+        if (!employeeName) {
+            throw new Error('Zadejte jméno obsluhy!');
+        }
+        
+        // Get print flag
+        const printReceipt = document.getElementById('split-print-checkbox').checked;
+        
+        // Get selected items with quantities from the new interface
+        const qtyInputs = document.querySelectorAll('.split-qty-input');
+        const items = [];
+        let hasAnyQuantity = false;
+        
+        qtyInputs.forEach(input => {
+            const qty = parseInt(input.value) || 0;
+            if (qty > 0) {
+                hasAnyQuantity = true;
+                const itemId = parseInt(input.dataset.itemId);
+                items.push({
+                    src: "order_item", // Required by API
+                    item_id: itemId,
+                    pay_qty: qty
+                });
             }
-        }
-    });
-    Array.from(document.querySelectorAll('.split-check')).forEach((cb) => {
-        if (cb.checked) {
-            const groupIdx = parseInt(cb.dataset.groupidx, 10);
-            let group = lastSplitGroups[groupIdx];
-            payArr.push({ id: group.ids[0], quantity: 1 });
-        }
-    });
-
-    const payFiltered = payArr.filter(x => x.quantity > 0);
-    if (payFiltered.length === 0) return;
-
-    // ✅ KONTROLA: Zjisti jestli se platí všechny zbývající položky
-    fetch(API + '?action=session-bill&table_number=' + lastSplitTable)
-    .then(r=>r.json())
-    .then(sessionRes => {
-        const allItems = sessionRes.data.items || [];
-        const activeItems = allItems.filter(i => i.status !== 'cancelled');
-        const unpaidItems = activeItems.filter(i => i.status !== 'paid');
+        });
         
-        // Spočítej kolik položek se právě platí
-        const payingItemsCount = payFiltered.reduce((sum, item) => sum + item.quantity, 0);
-        const willBeFullyPaid = payingItemsCount >= unpaidItems.length;
+        // Validation - if no quantities selected, confirm full payment
+        if (!hasAnyQuantity) {
+            const confirmed = confirm('Nebyla vybrána žádná konkrétní položka. Vystavit účtenku na všechny zbývající položky?');
+            if (!confirmed) {
+                throw new Error('Zrušeno uživatelem');
+            }
+            // Empty items array means full payment in the API
+            items.length = 0;
+        }
         
-        console.log('Split payment - Will be fully paid:', willBeFullyPaid, 'Paying:', payingItemsCount, 'Unpaid:', unpaidItems.length);
-
-        // ✅ PŘIDEJ payment_method a close_session flag
-        fetch(API + '?action=pay-items', {
+        // Create receipt request
+        const response = await fetch(`${API}?action=create-receipt`, {
             method: 'POST',
-            headers: {'Content-Type':'application/json'},
+            headers: {
+                'Content-Type': 'application/json'
+            },
             body: JSON.stringify({
-                items: payFiltered,
-                payment_method: splitPaymentMethod,
-                table_number: lastSplitTable,  // ✅ PŘIDÁNO
-                close_session: willBeFullyPaid  // ✅ PŘIDÁNO
+                table: lastSplitTable,
+                payment_method: paymentMethod,
+                employee_name: employeeName,
+                print: printReceipt,
+                items: items
             })
-        })
-        .then(r=>r.json())
-        .then(res => {
-            console.log('Split pay response:', res);
+        });
+        
+        const result = await response.json();
+        
+        if (!result.success) {
+            throw new Error(result.error || 'Chyba při vytváření účtenky');
+        }
+        
+        // Success handling
+        const receiptNumber = result.data.receipt_number || result.data.number;
+        const fullyPaid = result.data.fully_paid;
+        
+        alert(`Účtenka #${receiptNumber} vytvořena.`);
+        
+        if (fullyPaid) {
+            // Close modal and reload tables if fully paid
             closeModal();
             loadTables();
-        });
-    });
+        } else {
+            // Reload the modal with updated data
+            const billResponse = await fetch(`${API}?action=get-bill&table=${lastSplitTable}`);
+            const billResult = await billResponse.json();
+            
+            if (billResult.success) {
+                const items = billResult.data.items || [];
+                const outstandingItems = items.filter(item => {
+                    const outstandingQty = getItemValue(item, 'qty_outstanding', 'outstanding_qty');
+                    return outstandingQty > 0;
+                });
+                
+                lastSplitBillData = billResult.data;
+                showSplitModal(outstandingItems, billResult.data);
+            }
+            
+            // Also reload tables to update the main view
+            loadTables();
+        }
+        
+    } catch (error) {
+        console.error('Error creating receipt:', error);
+        alert('Chyba při vytváření účtenky: ' + error.message);
+        
+        // Reset button state
+        createBtn.disabled = false;
+        createBtn.textContent = 'ZAPLATIT VYBRANÉ';
+    }
 }
 
 function changeQuantity(groupIdx, change) {
-    const input = document.querySelector(`.split-qty[data-groupidx="${groupIdx}"]`);
-    let qty = parseInt(input.value, 10) || 0;
-    qty += change;
-    if (qty < 0) qty = 0;
-    if (qty > lastSplitGroups[groupIdx].qty) qty = lastSplitGroups[groupIdx].qty;
-    input.value = qty;
-    updateModalTotal();
+    // Legacy function - no longer used in new receipt modal interface
+    console.warn('changeQuantity called - this function is deprecated in the new receipt modal');
 }
 
 function updateLastUpdateTime() {
@@ -1560,6 +1672,7 @@ window.showTableChangeModal = showTableChangeModal;
 window.closeTableChangeModal = closeTableChangeModal;
 window.selectNewTable = selectNewTable;
 window.confirmTableChange = confirmTableChange;
+window.reprintReceipt = reprintReceipt;
 // Proměnné pro zrušení položky
 let cancelItemIds = [];
 let cancelItemData = {};
