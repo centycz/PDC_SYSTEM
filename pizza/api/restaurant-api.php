@@ -353,191 +353,135 @@ try {
     try {
         $body = getJsonBody();
         file_put_contents('/tmp/restaurant_debug.log', "Parsed JSON: " . json_encode($body) . "\n", FILE_APPEND);
-            
-            $table_number = intval($body['table'] ?? 0);
-            $items = $body['items'] ?? [];
-            $customer_name = $body['customer_name'] ?? '';
-            $employee_name = $body['employee_name'] ?? '';
-            // Note: is_reserved is now automatically determined, ignoring client input
-            
-            file_put_contents('/tmp/restaurant_debug.log', 
-                "Parsed data: table=$table_number, items=" . count($items) . ", customer=$customer_name, employee=$employee_name\n", 
-                FILE_APPEND
-            );
-            
-            if ($table_number <= 0) {
-                file_put_contents('/tmp/restaurant_debug.log', "ERROR: Invalid table number\n", FILE_APPEND);
-                jsend(false, null, "Není vybrán stůl!");
-                exit;
-            }
-            
-            if (!is_array($items) || count($items) < 1) {
-                file_put_contents('/tmp/restaurant_debug.log', "ERROR: Invalid items\n", FILE_APPEND);
-                jsend(false, null, "Chybí položky objednávky!");
-                exit;
-            }
-
-            file_put_contents('/tmp/restaurant_debug.log', "Starting database transaction\n", FILE_APPEND);
-            $pdo->beginTransaction();
-            
-            // Check/create table session
-            $s = $pdo->prepare("SELECT id FROM table_sessions WHERE table_number=? AND is_active=1 LIMIT 1");
-            $s->execute([$table_number]);
-            $row = $s->fetch();
-            
-            if ($row) {
-                $table_session_id = $row['id'];
-                file_put_contents('/tmp/restaurant_debug.log', "Found existing session: $table_session_id\n", FILE_APPEND);
-            } else {
-                $pdo->prepare("INSERT INTO table_sessions (table_number, start_time, is_active) VALUES (?, NOW(), 1)")
-                    ->execute([$table_number]);
-                $table_session_id = $pdo->lastInsertId();
-                file_put_contents('/tmp/restaurant_debug.log', "Created new session: $table_session_id\n", FILE_APPEND);
-                
-                $pdo->prepare("UPDATE restaurant_tables SET status='occupied', session_start=NOW() WHERE table_number=?")
-                    ->execute([$table_number]);
-            }
-
-            // Use employee_name from JSON or session
-            $final_employee_name = $employee_name ?: ($_SESSION['employee_name'] ?? '');
-            file_put_contents('/tmp/restaurant_debug.log', "Final employee name: $final_employee_name\n", FILE_APPEND);
-
-            // Add database migrations for new schema
-            try {
-                $pdo->exec("ALTER TABLE orders ADD COLUMN IF NOT EXISTS is_reserved BOOLEAN DEFAULT FALSE AFTER employee_name");
-                $pdo->exec("ALTER TABLE orders ADD COLUMN IF NOT EXISTS reservation_id INT NULL AFTER table_session_id");
-                $pdo->exec("ALTER TABLE orders ADD INDEX IF NOT EXISTS idx_orders_reservation_id (reservation_id)");
-                $pdo->exec("ALTER TABLE reservations MODIFY status ENUM('pending','confirmed','seated','finished','cancelled','no_show') DEFAULT 'pending'");
-            } catch (PDOException $e) {
-                // Columns/indexes already exist
-                file_put_contents('/tmp/restaurant_debug.log', "Schema migration info: " . $e->getMessage() . "\n", FILE_APPEND);
-            }
-
-            // Detect seated reservation for table (automatic reservation linking)
-            require_once __DIR__ . '/../../includes/reservations_lib.php';
-            require_once __DIR__ . '/../../includes/dough_allocation.php';
-            
-            $seatedReservation = getSeatedReservationForTable($table_number);
-            $reservation_id = $seatedReservation ? $seatedReservation['id'] : null;
-            $is_reserved = ($seatedReservation !== null);
-            
-            file_put_contents('/tmp/restaurant_debug.log', 
-                "Reservation detection: table=$table_number, reservation_id=" . ($reservation_id ?? 'NULL') . ", is_reserved=" . ($is_reserved ? 'true' : 'false') . "\n", 
-                FILE_APPEND
-            );
-
-            // Create order with automatic reservation linking
-            $stmt = $pdo->prepare("INSERT INTO orders (table_session_id, reservation_id, created_at, status, order_type, customer_name, employee_name, is_reserved) VALUES (?, ?, NOW(), 'pending', 'other', ?, ?, ?)");
-            $result = $stmt->execute([$table_session_id, $reservation_id, $customer_name, $final_employee_name, $is_reserved ? 1 : 0]);
-            
-            if (!$result) {
-                file_put_contents('/tmp/restaurant_debug.log', "ERROR: Failed to insert order\n", FILE_APPEND);
-                throw new Exception("Failed to create order");
-            }
-            
-            $order_id = $pdo->lastInsertId();
-            file_put_contents('/tmp/restaurant_debug.log', "Created order ID: $order_id\n", FILE_APPEND);
-
-            // Update daily stats
-            $stmt = $pdo->prepare("UPDATE daily_stats SET total_orders = total_orders + 1 WHERE date = ?");
-            $stmt->execute([$today]);
-
-            // Insert order items
-            $hasPizza = false;
-            foreach ($items as $index => $item) {
-                file_put_contents('/tmp/restaurant_debug.log', "Processing item $index: " . print_r($item, true) . "\n", FILE_APPEND);
-                
-                $itemType = $item['type'] ?? 'pizza';
-                if ($itemType === 'pizza') {
-                    $hasPizza = true;
-                }
-                
-                $result = $pdo->prepare("INSERT INTO order_items (order_id, item_type, item_name, quantity, unit_price, note, status)
-                    VALUES (?, ?, ?, ?, ?, ?, 'pending')")
-                    ->execute([
-                        $order_id,
-                        $itemType,
-                        $item['name'] ?? '',
-                        intval($item['quantity'] ?? 1),
-                        floatval($item['unit_price'] ?? 0),
-                        $item['note'] ?? ''
-                    ]);
-                    
-                if (!$result) {
-                    file_put_contents('/tmp/restaurant_debug.log', "ERROR: Failed to insert item $index\n", FILE_APPEND);
-                    throw new Exception("Failed to insert order item");
-                }
-            }
-
-            // Simplified dough consumption using new helper function
-            if ($hasPizza) {
-                // Count total pizza items in this order
-                $stmt = $pdo->prepare("SELECT COALESCE(SUM(quantity), 0) as pizza_count FROM order_items WHERE order_id = ? AND item_type = 'pizza'");
-                $stmt->execute([$order_id]);
-                $pizzaCount = (int)$stmt->fetchColumn();
-                
-                if ($pizzaCount > 0) {
-                    $today = date('Y-m-d');
-                    
-                    // Include dough_auto.php for the helper function
-                    require_once __DIR__ . '/../../includes/dough_auto.php';
-                    
-                    // Use the new atomic helper function
-                    $success = incrementPizzaUsed($today, $pizzaCount, 'ORDER');
-                    
-                    if ($success) {
-                        file_put_contents('/tmp/restaurant_debug.log', 
-                            "Pizza consumption recorded: $pizzaCount pizzas for order $order_id" . ($is_reserved ? " [RESERVED]" : " [WALKIN]") . "\n", 
-                            FILE_APPEND
-                        );
-                    } else {
-                        file_put_contents('/tmp/restaurant_debug.log', 
-                            "ERROR: Failed to record pizza consumption for order $order_id\n", 
-                            FILE_APPEND
-                        );
-                    }
-                }
-            }
-
-            // ✅ NOVÁ LOGIKA: Automaticky povolit samostatné pasta/dezerty
-            if (!$hasPizza) {
-                // Pokud objednávka nemá pizzu, automaticky povolit pasta a dezerty
-                $stmt = $pdo->prepare("
-                    UPDATE order_items 
-                    SET status = 'preparing',
-                        note = CONCAT(COALESCE(note, ''), ' - Automaticky povoleno (bez pizzy)')
-                    WHERE order_id = ? 
-                    AND item_type IN ('pasta', 'dezert')
-                    AND status = 'pending'
-                ");
-                $stmt->execute([$order_id]);
-                
-                $affectedItems = $stmt->rowCount();
-                if ($affectedItems > 0) {
-                    error_log("✅ AUTO-RELEASE: Automatically released $affectedItems items for order $order_id (no pizza)");
-                    file_put_contents('/tmp/restaurant_debug.log', "✅ AUTO-RELEASE: Released $affectedItems items (no pizza)\n", FILE_APPEND);
-                }
-            }
-
-            $pdo->commit();
-            file_put_contents('/tmp/restaurant_debug.log', "Transaction committed successfully\n", FILE_APPEND);
-            
-        } catch (Exception $e) {
-            if (isset($pdo) && $pdo->inTransaction()) {
-                $pdo->rollBack();
-            }
-            
-            $error = "Chyba při vytváření objednávky: " . $e->getMessage();
-            file_put_contents('/tmp/restaurant_debug.log', "EXCEPTION: $error\n" . $e->getTraceAsString() . "\n", FILE_APPEND);
-            
-            header('Content-Type: application/json; charset=utf-8');
-            echo json_encode([
-                'success' => false,
-                'data' => null,
-                'error' => $error
-            ], JSON_UNESCAPED_UNICODE);
-            exit;
+        
+        $table_number   = intval($body['table'] ?? 0);
+        $items          = $body['items'] ?? [];
+        $customer_name  = $body['customer_name'] ?? '';
+        $employee_name  = $body['employee_name'] ?? '';
+        $is_reserved    = $body['is_reserved'] ?? false;
+        
+        file_put_contents(
+            '/tmp/restaurant_debug.log',
+            "Parsed data: table=$table_number, items=" . count($items) . ", customer=$customer_name, employee=$employee_name, is_reserved=" . ($is_reserved ? 'true' : 'false') . "\n",
+            FILE_APPEND
+        );
+        
+        if ($table_number <= 0) {
+            file_put_contents('/tmp/restaurant_debug.log', "ERROR: Invalid table number\n", FILE_APPEND);
+            jsend(false, null, "Není vybrán stůl!");
         }
+        if (!is_array($items) || count($items) < 1) {
+            file_put_contents('/tmp/restaurant_debug.log', "ERROR: Invalid items\n", FILE_APPEND);
+            jsend(false, null, "Chybí položky objednávky!");
+        }
+        
+        file_put_contents('/tmp/restaurant_debug.log', "Starting database transaction\n", FILE_APPEND);
+        $pdo->beginTransaction();
+        
+        // Najít nebo vytvořit session
+        $s = $pdo->prepare("SELECT id FROM table_sessions WHERE table_number=? AND is_active=1 LIMIT 1");
+        $s->execute([$table_number]);
+        $row = $s->fetch();
+        
+        if ($row) {
+            $table_session_id = $row['id'];
+            file_put_contents('/tmp/restaurant_debug.log', "Found existing session: $table_session_id\n", FILE_APPEND);
+        } else {
+            $pdo->prepare("INSERT INTO table_sessions (table_number, start_time, is_active) VALUES (?, NOW(), 1)")
+                ->execute([$table_number]);
+            $table_session_id = $pdo->lastInsertId();
+            file_put_contents('/tmp/restaurant_debug.log', "Created new session: $table_session_id\n", FILE_APPEND);
+            
+            $pdo->prepare("UPDATE restaurant_tables SET status='occupied', session_start=NOW() WHERE table_number=?")
+                ->execute([$table_number]);
+        }
+        
+        $final_employee_name = $employee_name ?: ($_SESSION['employee_name'] ?? '');
+        file_put_contents('/tmp/restaurant_debug.log', "Final employee name: $final_employee_name\n", FILE_APPEND);
+        
+        // VLOŽENÍ OBJEDNÁVKY (order_type změněno na 'pizza')
+        $stmt = $pdo->prepare("
+            INSERT INTO orders (table_session_id, created_at, status, order_type, customer_name, employee_name, is_reserved)
+            VALUES (?, NOW(), 'pending', 'pizza', ?, ?, ?)
+        ");
+        $result = $stmt->execute([$table_session_id, $customer_name, $final_employee_name, $is_reserved ? 1 : 0]);
+        
+        if (!$result) {
+            file_put_contents('/tmp/restaurant_debug.log', "ERROR: Failed to insert order\n", FILE_APPEND);
+            throw new Exception("Failed to create order");
+        }
+        
+        $order_id = $pdo->lastInsertId();
+        file_put_contents('/tmp/restaurant_debug.log', "Created order ID: $order_id\n", FILE_APPEND);
+        
+        // Statistiky
+        $stmt = $pdo->prepare("UPDATE daily_stats SET total_orders = total_orders + 1 WHERE date = ?");
+        $stmt->execute([$today]);
+        
+        // Položky
+        $hasPizza = false;
+        foreach ($items as $index => $item) {
+            file_put_contents('/tmp/restaurant_debug.log', "Processing item $index: " . print_r($item, true) . "\n", FILE_APPEND);
+            
+            $itemType = $item['type'] ?? 'pizza';
+            if ($itemType === 'pizza') {
+                $hasPizza = true;
+            }
+            
+            $ok = $pdo->prepare("
+                INSERT INTO order_items (order_id, item_type, item_name, quantity, unit_price, note, status)
+                VALUES (?, ?, ?, ?, ?, ?, 'pending')
+            ")->execute([
+                $order_id,
+                $itemType,
+                $item['name'] ?? '',
+                intval($item['quantity'] ?? 1),
+                floatval($item['unit_price'] ?? 0),
+                $item['note'] ?? ''
+            ]);
+            
+            if (!$ok) {
+                file_put_contents('/tmp/restaurant_debug.log', "ERROR: Failed to insert item $index\n", FILE_APPEND);
+                throw new Exception("Failed to insert order item");
+            }
+        }
+        
+        // Auto-release pokud není pizza
+        if (!$hasPizza) {
+            $stmt = $pdo->prepare("
+                UPDATE order_items 
+                SET status = 'preparing',
+                    note = CONCAT(COALESCE(note, ''), ' - Automaticky povoleno (bez pizzy)')
+                WHERE order_id = ? 
+                AND item_type IN ('pasta', 'dezert')
+                AND status = 'pending'
+            ");
+            $stmt->execute([$order_id]);
+            $released = $stmt->rowCount();
+            if ($released > 0) {
+                file_put_contents('/tmp/restaurant_debug.log', "✅ AUTO-RELEASE: Released $released items (no pizza)\n", FILE_APPEND);
+            }
+        }
+        
+        $pdo->commit();
+        file_put_contents('/tmp/restaurant_debug.log', "Transaction committed successfully\n", FILE_APPEND);
+        
+    } catch (Exception $e) {
+        if ($pdo->inTransaction()) {
+            $pdo->rollBack();
+        }
+        
+        $error = "Chyba při vytváření objednávky: " . $e->getMessage();
+        file_put_contents('/tmp/restaurant_debug.log', "EXCEPTION: $error\n" . $e->getTraceAsString() . "\n", FILE_APPEND);
+        
+        header('Content-Type: application/json; charset=utf-8');
+        echo json_encode([
+            'success' => false,
+            'data' => null,
+            'error' => $error
+        ], JSON_UNESCAPED_UNICODE);
+        exit;
+    }
         
         // ✅ CRITICAL SECTION COMPLETED - Order is safely saved in database
         // From this point forward, we MUST return success regardless of non-critical failures
