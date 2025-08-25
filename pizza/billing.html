@@ -40,6 +40,10 @@
         .btn-pay:hover { background: #f09819; }
         .btn-split { background: #f09819; color: #fff; margin-top: 9px; margin-left: 7px;}
         .btn-split:hover { background: #ff5858; }
+        .btn-receipt { background: #ff5858; color: white; margin-top: 9px; margin-left: 7px;}
+        .btn-receipt:hover { background: #f09819; }
+        .btn-change-table { background: #6c757d; color: white; margin-top: 9px; margin-left: 7px;}
+        .btn-change-table:hover { background: #5a6268; }
         .last-update { text-align: center; color: #666; font-size: 0.95em; margin-top: 15px;}
         .empty-state { text-align: center; padding: 40px 20px; color: #999;}
         .empty-state .icon { font-size: 4em; margin-bottom: 20px; display: block;}
@@ -289,6 +293,247 @@
 
 .cancel-item-btn.cancel:hover {
     background: #5a6268;
+}
+
+/* Receipt Modal Styles */
+.receipt-modal {
+    position: fixed;
+    top: 0;
+    left: 0;
+    width: 100vw;
+    height: 100vh;
+    background: rgba(0,0,0,0.6);
+    display: none;
+    align-items: center;
+    justify-content: center;
+    z-index: 1000;
+}
+
+.receipt-content {
+    background: white;
+    border-radius: 15px;
+    padding: 30px;
+    box-shadow: 0 15px 40px rgba(0,0,0,0.3);
+    min-width: 600px;
+    max-width: 90vw;
+    max-height: 90vh;
+    overflow-y: auto;
+}
+
+.receipt-title {
+    color: #ff5858;
+    margin-bottom: 20px;
+    font-size: 1.8em;
+    font-weight: bold;
+    text-align: center;
+}
+
+.receipt-table-info {
+    text-align: center;
+    margin-bottom: 25px;
+    padding: 15px;
+    background: #f8f9fa;
+    border-radius: 8px;
+    font-size: 1.1em;
+    font-weight: bold;
+    color: #333;
+}
+
+.receipt-sections {
+    display: flex;
+    flex-direction: column;
+    gap: 25px;
+}
+
+.receipt-section {
+    border: 1px solid #dee2e6;
+    border-radius: 8px;
+    padding: 20px;
+}
+
+.receipt-section-title {
+    font-size: 1.2em;
+    font-weight: bold;
+    color: #495057;
+    margin-bottom: 15px;
+    display: flex;
+    align-items: center;
+    gap: 8px;
+}
+
+.outstanding-items-table {
+    width: 100%;
+    border-collapse: collapse;
+    margin-bottom: 15px;
+}
+
+.outstanding-items-table th,
+.outstanding-items-table td {
+    padding: 10px;
+    text-align: left;
+    border-bottom: 1px solid #dee2e6;
+}
+
+.outstanding-items-table th {
+    background: #f8f9fa;
+    font-weight: bold;
+    color: #495057;
+}
+
+.outstanding-items-table .text-right {
+    text-align: right;
+}
+
+.pay-qty-input {
+    width: 60px;
+    padding: 5px;
+    border: 1px solid #ced4da;
+    border-radius: 4px;
+    text-align: center;
+}
+
+.subtotal-info {
+    background: #e7f3ff;
+    padding: 15px;
+    border-radius: 8px;
+    text-align: center;
+    font-weight: bold;
+    color: #0056b3;
+}
+
+.payment-controls {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 15px;
+    margin-bottom: 20px;
+}
+
+.form-group {
+    display: flex;
+    flex-direction: column;
+}
+
+.form-group label {
+    font-weight: bold;
+    margin-bottom: 5px;
+    color: #495057;
+}
+
+.form-group select,
+.form-group input {
+    padding: 8px 12px;
+    border: 1px solid #ced4da;
+    border-radius: 4px;
+    font-size: 14px;
+}
+
+.checkbox-group {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+}
+
+.checkbox-group input[type="checkbox"] {
+    width: auto;
+}
+
+.receipt-history-table {
+    width: 100%;
+    border-collapse: collapse;
+}
+
+.receipt-history-table th,
+.receipt-history-table td {
+    padding: 8px 12px;
+    text-align: left;
+    border-bottom: 1px solid #dee2e6;
+}
+
+.receipt-history-table th {
+    background: #f8f9fa;
+    font-weight: bold;
+    color: #495057;
+}
+
+.reprint-btn {
+    background: #6c757d;
+    color: white;
+    border: none;
+    padding: 5px 10px;
+    border-radius: 4px;
+    font-size: 12px;
+    cursor: pointer;
+    transition: background 0.3s ease;
+}
+
+.reprint-btn:hover {
+    background: #5a6268;
+}
+
+.receipt-buttons {
+    display: flex;
+    justify-content: center;
+    gap: 15px;
+    margin-top: 25px;
+}
+
+.receipt-btn {
+    padding: 12px 25px;
+    border: none;
+    border-radius: 8px;
+    font-weight: bold;
+    cursor: pointer;
+    transition: all 0.3s ease;
+    font-size: 14px;
+}
+
+.receipt-btn.primary {
+    background: #ff5858;
+    color: white;
+}
+
+.receipt-btn.primary:hover {
+    background: #f09819;
+}
+
+.receipt-btn.secondary {
+    background: #6c757d;
+    color: white;
+}
+
+.receipt-btn.secondary:hover {
+    background: #5a6268;
+}
+
+.receipt-btn.select-all {
+    background: #28a745;
+    color: white;
+    margin-bottom: 15px;
+}
+
+.receipt-btn.select-all:hover {
+    background: #218838;
+}
+
+.fully-paid-banner {
+    background: #d1edff;
+    border: 2px solid #0066cc;
+    border-radius: 8px;
+    padding: 20px;
+    text-align: center;
+    color: #0066cc;
+    font-weight: bold;
+    font-size: 1.1em;
+}
+
+.remaining-banner {
+    background: #fff3cd;
+    border: 2px solid #ffc107;
+    border-radius: 8px;
+    padding: 15px;
+    text-align: center;
+    color: #856404;
+    font-weight: bold;
 }
 .status-indicator.paid {
     background: #157347;
@@ -1031,6 +1276,9 @@ console.log('Unpaid items:', unpaidItems.length, 'Unpaid delivered:', unpaidDeli
    <button class="btn btn-split" onclick="paySplit(${t.table_number}, this)" ${!hasAnyItems ? 'disabled' : ''} style="${!hasAnyItems ? 'opacity:0.5;' : ''}">
      ROZDĚLIT ÚČET
    </button>
+   <button class="btn btn-receipt" onclick="openReceiptModal(${t.table_number})" style="background:#ff5858;color:white;">
+     ÚČTENKA
+   </button>
    <button class="btn btn-change-table" onclick="showTableChangeModal(${t.table_number}, '${t.table_code}', ${total})">
      ZMĚNIT STŮL
    </button>`}
@@ -1766,7 +2014,433 @@ window.changeCancelQuantity = changeCancelQuantity;
 window.getStatusText = getStatusText;
 window.getBillItemClass = getBillItemClass;
 
+// Receipt functionality variables
+let currentReceiptTable = null;
+let currentBillData = null;
+
+// Receipt Modal Functions
+async function openReceiptModal(table_number) {
+    console.log('Opening receipt modal for table:', table_number);
+    currentReceiptTable = table_number;
+    
+    // Find table info
+    const table = tables.find(t => t.table_number == table_number);
+    const tableInfo = table ? `${table.table_code} (Stůl ${table_number})` : `Stůl ${table_number}`;
+    
+    document.getElementById('receiptTableInfo').textContent = `Stůl: ${tableInfo}`;
+    document.getElementById('receiptModal').style.display = 'flex';
+    
+    await loadBillData(table_number);
+}
+
+function closeReceiptModal() {
+    document.getElementById('receiptModal').style.display = 'none';
+    currentReceiptTable = null;
+    currentBillData = null;
+}
+
+async function loadBillData(table_number) {
+    try {
+        console.log('Loading bill data for table:', table_number);
+        
+        const response = await fetch(`${API}?action=get-bill&table=${table_number}`);
+        const result = await response.json();
+        
+        console.log('Bill data response:', result);
+        
+        if (result.success) {
+            currentBillData = result.data;
+            renderBillModal(result.data);
+        } else {
+            alert('Chyba při načítání účtu: ' + (result.error || 'Neznámá chyba'));
+        }
+    } catch (error) {
+        console.error('Error loading bill data:', error);
+        alert('Chyba při načítání účtu: ' + error.message);
+    }
+}
+
+function renderBillModal(data) {
+    const { items = [], prior_receipts = [], fully_paid = false } = data;
+    
+    // Show/hide sections based on payment status
+    if (fully_paid || items.length === 0) {
+        document.getElementById('fullyPaidBanner').style.display = 'block';
+        document.getElementById('outstandingSection').style.display = 'none';
+    } else {
+        document.getElementById('fullyPaidBanner').style.display = 'none';
+        document.getElementById('outstandingSection').style.display = 'block';
+        renderOutstandingItems(items);
+    }
+    
+    renderReceiptHistory(prior_receipts);
+    updateSubtotal();
+}
+
+function renderOutstandingItems(items) {
+    const tbody = document.getElementById('outstandingItemsList');
+    
+    if (items.length === 0) {
+        tbody.innerHTML = '<tr><td colspan="7" style="text-align: center; color: #999;">Žádné nesplacené položky</td></tr>';
+        return;
+    }
+    
+    tbody.innerHTML = items.map(item => {
+        // Handle both 'name' and 'item_name' fields for compatibility
+        const itemName = item.name || item.item_name || 'Neznámá položka';
+        const unitPrice = Number(item.unit_price || 0);
+        const qtyTotal = Number(item.qty_total || 0);
+        const qtyPaid = Number(item.qty_paid || 0);
+        const qtyOutstanding = Number(item.qty_outstanding || 0);
+        
+        return `
+            <tr data-item-id="${item.id}" data-item-src="${item.src}">
+                <td><strong>${itemName}</strong></td>
+                <td class="text-right">${qtyTotal}</td>
+                <td class="text-right">${qtyPaid}</td>
+                <td class="text-right">${qtyOutstanding}</td>
+                <td class="text-right">${unitPrice} Kč</td>
+                <td class="text-right">
+                    <input type="number" 
+                           class="pay-qty-input" 
+                           min="0" 
+                           max="${qtyOutstanding}"
+                           value="0"
+                           data-unit-price="${unitPrice}"
+                           onchange="updateSubtotal()">
+                </td>
+                <td class="text-right line-total">0 Kč</td>
+            </tr>
+        `;
+    }).join('');
+    
+    updateSubtotal();
+}
+
+function renderReceiptHistory(receipts) {
+    const tbody = document.getElementById('receiptHistoryList');
+    const section = document.getElementById('receiptHistorySection');
+    
+    if (receipts.length === 0) {
+        tbody.innerHTML = '<tr><td colspan="5" style="text-align: center; color: #999;">Žádné předchozí účtenky</td></tr>';
+    } else {
+        tbody.innerHTML = receipts.map(receipt => {
+            const receiptNumber = receipt.receipt_number;
+            const totalAmount = Number(receipt.total_amount || 0);
+            const paidAt = new Date(receipt.paid_at).toLocaleString('cs-CZ');
+            const printed = receipt.printed ? 'Ano' : 'Ne';
+            const reprintCount = receipt.reprint_count || 0;
+            
+            return `
+                <tr>
+                    <td><strong>#${receiptNumber}</strong></td>
+                    <td>${totalAmount} Kč</td>
+                    <td>${paidAt}</td>
+                    <td>${printed}${reprintCount > 0 ? ` (${reprintCount}×)` : ''}</td>
+                    <td>
+                        <button class="reprint-btn" onclick="reprintReceipt(${receiptNumber})">
+                            Znovu tisknout
+                        </button>
+                    </td>
+                </tr>
+            `;
+        }).join('');
+    }
+}
+
+function selectAllOutstanding() {
+    const inputs = document.querySelectorAll('#outstandingItemsList .pay-qty-input');
+    inputs.forEach(input => {
+        input.value = input.max;
+    });
+    updateSubtotal();
+}
+
+function updateSubtotal() {
+    const inputs = document.querySelectorAll('#outstandingItemsList .pay-qty-input');
+    let total = 0;
+    
+    inputs.forEach(input => {
+        const qty = Number(input.value || 0);
+        const unitPrice = Number(input.dataset.unitPrice || 0);
+        const lineTotal = qty * unitPrice;
+        
+        // Update line total
+        const row = input.closest('tr');
+        const lineTotalCell = row.querySelector('.line-total');
+        lineTotalCell.textContent = lineTotal + ' Kč';
+        
+        total += lineTotal;
+    });
+    
+    document.getElementById('subtotalInfo').textContent = `Vybraná částka: ${total} Kč`;
+    
+    // Show/hide remaining banner
+    const hasPartialSelection = Array.from(inputs).some(input => {
+        const selected = Number(input.value || 0);
+        const max = Number(input.max || 0);
+        return selected > 0 && selected < max;
+    });
+    
+    const hasAnySelection = total > 0;
+    const allSelected = Array.from(inputs).every(input => {
+        const selected = Number(input.value || 0);
+        const max = Number(input.max || 0);
+        return selected === max;
+    });
+    
+    const remainingBanner = document.getElementById('remainingBanner');
+    if (hasAnySelection && !allSelected) {
+        remainingBanner.style.display = 'block';
+    } else {
+        remainingBanner.style.display = 'none';
+    }
+}
+
+async function createReceipt() {
+    if (!currentReceiptTable || !currentBillData) {
+        alert('Chyba: Nejsou načtena data stolu');
+        return;
+    }
+    
+    const paymentMethod = document.getElementById('receiptPaymentMethod').value;
+    const employeeName = document.getElementById('receiptEmployeeName').value.trim();
+    const print = document.getElementById('receiptPrint').checked;
+    
+    if (!employeeName) {
+        alert('Prosím zadej jméno obsluhy');
+        return;
+    }
+    
+    // Collect selected items
+    const inputs = document.querySelectorAll('#outstandingItemsList .pay-qty-input');
+    const items = [];
+    let hasSelection = false;
+    
+    inputs.forEach(input => {
+        const qty = Number(input.value || 0);
+        if (qty > 0) {
+            hasSelection = true;
+            const row = input.closest('tr');
+            const itemId = row.dataset.itemId;
+            const itemSrc = row.dataset.itemSrc;
+            
+            items.push({
+                src: itemSrc,
+                item_id: Number(itemId),
+                pay_qty: qty
+            });
+        }
+    });
+    
+    // If no specific items selected, ask for confirmation for full payment
+    if (!hasSelection) {
+        const confirm = window.confirm('Nebyla vybrána žádná položka. Chceš zaplatit všechny zbývající položky?');
+        if (!confirm) {
+            return;
+        }
+        // For full payment, send empty items array
+    }
+    
+    try {
+        console.log('Creating receipt with data:', {
+            table: currentReceiptTable,
+            payment_method: paymentMethod,
+            employee_name: employeeName,
+            print: print,
+            items: items
+        });
+        
+        const response = await fetch(`${API}?action=create-receipt`, {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json'
+            },
+            body: JSON.stringify({
+                table: Number(currentReceiptTable),
+                payment_method: paymentMethod,
+                employee_name: employeeName,
+                print: print,
+                items: items
+            })
+        });
+        
+        const result = await response.json();
+        
+        console.log('Create receipt response:', result);
+        
+        if (result.success) {
+            const receiptData = result.data;
+            alert(`Účtenka úspěšně vytvořena!\nÚčet číslo: #${receiptData.receipt_number}\nČástka: ${receiptData.total_amount} Kč`);
+            
+            // Refresh data
+            await loadBillData(currentReceiptTable);
+            loadTables(); // Refresh table list
+        } else {
+            alert('Chyba při vytváření účtenky: ' + (result.error || 'Neznámá chyba'));
+        }
+    } catch (error) {
+        console.error('Error creating receipt:', error);
+        alert('Chyba při vytváření účtenky: ' + error.message);
+    }
+}
+
+async function reprintReceipt(receiptNumber) {
+    try {
+        console.log('Reprinting receipt:', receiptNumber);
+        
+        const response = await fetch(`${API}?action=reprint-receipt&receipt_number=${receiptNumber}`);
+        const result = await response.json();
+        
+        console.log('Reprint receipt response:', result);
+        
+        if (result.success) {
+            const receiptData = result.data;
+            alert(`Účtenka znovu vytisknuta!\nÚčet číslo: #${receiptData.receipt_number}\nPočet tisku: ${receiptData.reprint_count}`);
+            
+            // Refresh receipt history
+            await loadBillData(currentReceiptTable);
+        } else {
+            alert('Chyba při tisku účtenky: ' + (result.error || 'Neznámá chyba'));
+        }
+    } catch (error) {
+        console.error('Error reprinting receipt:', error);
+        alert('Chyba při tisku účtenky: ' + error.message);
+    }
+}
+
+// Export receipt functions to window
+window.openReceiptModal = openReceiptModal;
+window.closeReceiptModal = closeReceiptModal;
+window.loadBillData = loadBillData;
+window.renderOutstandingItems = renderOutstandingItems;
+window.renderReceiptHistory = renderReceiptHistory;
+window.selectAllOutstanding = selectAllOutstanding;
+window.updateSubtotal = updateSubtotal;
+window.createReceipt = createReceipt;
+window.reprintReceipt = reprintReceipt;
+
 </script>
+
+<!-- Receipt Modal -->
+<div id="receiptModal" class="receipt-modal">
+    <div class="receipt-content">
+        <div class="receipt-title">🧾 Účtenka / Platba</div>
+        
+        <div class="receipt-table-info" id="receiptTableInfo">
+            Stůl: [Table Number]
+        </div>
+
+        <!-- Fully Paid Banner -->
+        <div id="fullyPaidBanner" class="fully-paid-banner" style="display: none;">
+            ✅ Všechny položky jsou zaplacené!<br>
+            Pro tento stůl již nejsou žádné nesplacené položky.
+        </div>
+
+        <!-- Outstanding Items Section -->
+        <div id="outstandingSection" class="receipt-sections">
+            <div class="receipt-section">
+                <div class="receipt-section-title">
+                    📋 Nesplacené položky
+                </div>
+                
+                <div id="outstandingItemsContainer">
+                    <table class="outstanding-items-table">
+                        <thead>
+                            <tr>
+                                <th>Položka</th>
+                                <th class="text-right">Celkem</th>
+                                <th class="text-right">Zaplaceno</th>
+                                <th class="text-right">Zbývá</th>
+                                <th class="text-right">Cena/ks</th>
+                                <th class="text-right">Platit ks</th>
+                                <th class="text-right">Částka</th>
+                            </tr>
+                        </thead>
+                        <tbody id="outstandingItemsList">
+                            <!-- Outstanding items will be rendered here -->
+                        </tbody>
+                    </table>
+                    
+                    <button type="button" class="receipt-btn select-all" onclick="selectAllOutstanding()">
+                        Vybrat vše
+                    </button>
+                    
+                    <div class="subtotal-info" id="subtotalInfo">
+                        Vybraná částka: 0 Kč
+                    </div>
+                </div>
+            </div>
+
+            <!-- Payment Controls Section -->
+            <div class="receipt-section">
+                <div class="receipt-section-title">
+                    💳 Způsob platby
+                </div>
+                
+                <div class="payment-controls">
+                    <div class="form-group">
+                        <label for="receiptPaymentMethod">Platební metoda:</label>
+                        <select id="receiptPaymentMethod">
+                            <option value="cash">Hotovost</option>
+                            <option value="card">Karta</option>
+                        </select>
+                    </div>
+                    
+                    <div class="form-group">
+                        <label for="receiptEmployeeName">Jméno obsluhy:</label>
+                        <input type="text" id="receiptEmployeeName" value="Pavla" placeholder="Zadej jméno obsluhy">
+                    </div>
+                </div>
+                
+                <div class="form-group">
+                    <div class="checkbox-group">
+                        <input type="checkbox" id="receiptPrint">
+                        <label for="receiptPrint">Tisknout účtenku</label>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Receipt History Section -->
+            <div class="receipt-section" id="receiptHistorySection">
+                <div class="receipt-section-title">
+                    📜 Historie účtenek
+                </div>
+                
+                <div id="receiptHistoryContainer">
+                    <table class="receipt-history-table">
+                        <thead>
+                            <tr>
+                                <th>Číslo účtu</th>
+                                <th>Částka</th>
+                                <th>Datum</th>
+                                <th>Tisknut</th>
+                                <th>Akce</th>
+                            </tr>
+                        </thead>
+                        <tbody id="receiptHistoryList">
+                            <!-- Receipt history will be rendered here -->
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+        </div>
+
+        <!-- Remaining Items Banner -->
+        <div id="remainingBanner" class="remaining-banner" style="display: none;">
+            ⚠️ Po této platbě zůstanou nesplacené položky na stole.
+        </div>
+
+        <div class="receipt-buttons">
+            <button class="receipt-btn primary" onclick="createReceipt()">
+                Zaplatit
+            </button>
+            <button class="receipt-btn secondary" onclick="closeReceiptModal()">
+                Zrušit
+            </button>
+        </div>
+    </div>
+</div>
 
 <!-- Modal pro zrušení položky -->
 <div id="cancelItemModal" class="cancel-item-modal">
