@@ -1,0 +1,280 @@
+<!DOCTYPE html>
+<html lang="cs">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Partial Receipt System - Test Interface</title>
+    <style>
+        body { 
+            font-family: Arial, sans-serif; 
+            margin: 20px; 
+            background-color: #f5f5f5; 
+        }
+        .container { 
+            max-width: 800px; 
+            margin: 0 auto; 
+            background: white; 
+            padding: 20px; 
+            border-radius: 10px; 
+            box-shadow: 0 2px 10px rgba(0,0,0,0.1); 
+        }
+        .endpoint { 
+            margin: 20px 0; 
+            padding: 15px; 
+            border: 1px solid #ddd; 
+            border-radius: 8px; 
+            background-color: #f9f9f9; 
+        }
+        .endpoint h3 { 
+            margin-top: 0; 
+            color: #333; 
+        }
+        .form-group { 
+            margin: 10px 0; 
+        }
+        label { 
+            display: inline-block; 
+            width: 150px; 
+            font-weight: bold; 
+        }
+        input, select, textarea { 
+            padding: 8px; 
+            border: 1px solid #ccc; 
+            border-radius: 4px; 
+        }
+        button { 
+            background-color: #007bff; 
+            color: white; 
+            padding: 10px 20px; 
+            border: none; 
+            border-radius: 4px; 
+            cursor: pointer; 
+        }
+        button:hover { 
+            background-color: #0056b3; 
+        }
+        .response { 
+            margin-top: 15px; 
+            padding: 10px; 
+            border-radius: 4px; 
+            font-family: monospace; 
+            white-space: pre-wrap; 
+        }
+        .response.success { 
+            background-color: #d4edda; 
+            border: 1px solid #c3e6cb; 
+            color: #155724; 
+        }
+        .response.error { 
+            background-color: #f8d7da; 
+            border: 1px solid #f5c6cb; 
+            color: #721c24; 
+        }
+        .note { 
+            background-color: #fff3cd; 
+            border: 1px solid #ffeaa7; 
+            color: #856404; 
+            padding: 10px; 
+            border-radius: 4px; 
+            margin-bottom: 20px; 
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>🧾 Partial Receipt System - Test Interface</h1>
+        
+        <div class="note">
+            <strong>Note:</strong> This is a test interface for the new partial receipt functionality. 
+            The database needs to be running and migrated for the endpoints to work properly.
+        </div>
+
+        <!-- GET BILL ENDPOINT -->
+        <div class="endpoint">
+            <h3>📋 GET Bill (get-bill)</h3>
+            <p>Retrieve outstanding items and prior receipts for a table</p>
+            
+            <div class="form-group">
+                <label>Table Number:</label>
+                <input type="number" id="getBillTable" value="5" min="1">
+            </div>
+            
+            <button onclick="getBill()">Get Bill</button>
+            
+            <div id="getBillResponse" class="response" style="display:none;"></div>
+        </div>
+
+        <!-- CREATE RECEIPT ENDPOINT -->
+        <div class="endpoint">
+            <h3>🧾 CREATE Receipt (create-receipt)</h3>
+            <p>Process partial payment and create receipt</p>
+            
+            <div class="form-group">
+                <label>Table Number:</label>
+                <input type="number" id="createReceiptTable" value="5" min="1">
+            </div>
+            
+            <div class="form-group">
+                <label>Payment Method:</label>
+                <select id="paymentMethod">
+                    <option value="cash">Cash</option>
+                    <option value="card">Card</option>
+                </select>
+            </div>
+            
+            <div class="form-group">
+                <label>Employee Name:</label>
+                <input type="text" id="employeeName" value="Pavla">
+            </div>
+            
+            <div class="form-group">
+                <label>Print Receipt:</label>
+                <input type="checkbox" id="printReceipt" checked>
+            </div>
+            
+            <div class="form-group">
+                <label>Items JSON:</label>
+                <textarea id="itemsJson" rows="6" placeholder="Leave empty for full payment or provide JSON array like:
+[
+  {&quot;src&quot;: &quot;order_item&quot;, &quot;item_id&quot;: 123, &quot;pay_qty&quot;: 1},
+  {&quot;src&quot;: &quot;order_item&quot;, &quot;item_id&quot;: 124, &quot;pay_qty&quot;: 2}
+]"></textarea>
+            </div>
+            
+            <button onclick="createReceipt()">Create Receipt</button>
+            
+            <div id="createReceiptResponse" class="response" style="display:none;"></div>
+        </div>
+
+        <!-- REPRINT RECEIPT ENDPOINT -->
+        <div class="endpoint">
+            <h3>🖨️ REPRINT Receipt (reprint-receipt)</h3>
+            <p>Reprint an existing receipt by receipt number</p>
+            
+            <div class="form-group">
+                <label>Receipt Number:</label>
+                <input type="number" id="reprintReceiptNumber" value="1001" min="1">
+            </div>
+            
+            <button onclick="reprintReceipt()">Reprint Receipt</button>
+            
+            <div id="reprintReceiptResponse" class="response" style="display:none;"></div>
+        </div>
+
+        <!-- TEST SCENARIO -->
+        <div class="endpoint">
+            <h3>🧪 Test Scenario</h3>
+            <p>Example workflow for testing partial payments</p>
+            
+            <ol>
+                <li>First, use <strong>Get Bill</strong> to see outstanding items for table</li>
+                <li>Note down item IDs from the response</li>
+                <li>Use <strong>Create Receipt</strong> to pay for some items:
+                    <ul>
+                        <li>Leave "Items JSON" empty for full payment</li>
+                        <li>Or specify specific items like: <code>[{"src": "order_item", "item_id": 123, "pay_qty": 1}]</code></li>
+                    </ul>
+                </li>
+                <li>Check <strong>Get Bill</strong> again to see updated outstanding amounts</li>
+                <li>Prior receipts will be listed in the "prior_receipts" section</li>
+            </ol>
+        </div>
+    </div>
+
+    <script>
+        const API_BASE = '/pizza/api/restaurant-api.php';
+
+        async function getBill() {
+            const table = document.getElementById('getBillTable').value;
+            const responseDiv = document.getElementById('getBillResponse');
+            
+            if (!table) {
+                showResponse(responseDiv, 'Please enter a table number', 'error');
+                return;
+            }
+
+            try {
+                const response = await fetch(`${API_BASE}?action=get-bill&table=${table}`);
+                const data = await response.json();
+                
+                showResponse(responseDiv, JSON.stringify(data, null, 2), response.ok ? 'success' : 'error');
+            } catch (error) {
+                showResponse(responseDiv, `Error: ${error.message}`, 'error');
+            }
+        }
+
+        async function createReceipt() {
+            const table = document.getElementById('createReceiptTable').value;
+            const paymentMethod = document.getElementById('paymentMethod').value;
+            const employeeName = document.getElementById('employeeName').value;
+            const printReceipt = document.getElementById('printReceipt').checked;
+            const itemsJsonText = document.getElementById('itemsJson').value.trim();
+            const responseDiv = document.getElementById('createReceiptResponse');
+            
+            if (!table) {
+                showResponse(responseDiv, 'Please enter a table number', 'error');
+                return;
+            }
+
+            let items = [];
+            if (itemsJsonText) {
+                try {
+                    items = JSON.parse(itemsJsonText);
+                } catch (e) {
+                    showResponse(responseDiv, `Invalid JSON in items: ${e.message}`, 'error');
+                    return;
+                }
+            }
+
+            const requestData = {
+                table: parseInt(table),
+                payment_method: paymentMethod,
+                employee_name: employeeName,
+                print: printReceipt,
+                items: items
+            };
+
+            try {
+                const response = await fetch(`${API_BASE}?action=create-receipt`, {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json'
+                    },
+                    body: JSON.stringify(requestData)
+                });
+                
+                const data = await response.json();
+                
+                showResponse(responseDiv, JSON.stringify(data, null, 2), response.ok ? 'success' : 'error');
+            } catch (error) {
+                showResponse(responseDiv, `Error: ${error.message}`, 'error');
+            }
+        }
+
+        async function reprintReceipt() {
+            const receiptNumber = document.getElementById('reprintReceiptNumber').value;
+            const responseDiv = document.getElementById('reprintReceiptResponse');
+            
+            if (!receiptNumber) {
+                showResponse(responseDiv, 'Please enter a receipt number', 'error');
+                return;
+            }
+
+            try {
+                const response = await fetch(`${API_BASE}?action=reprint-receipt&receipt_number=${receiptNumber}`);
+                const data = await response.json();
+                
+                showResponse(responseDiv, JSON.stringify(data, null, 2), response.ok ? 'success' : 'error');
+            } catch (error) {
+                showResponse(responseDiv, `Error: ${error.message}`, 'error');
+            }
+        }
+
+        function showResponse(element, text, type) {
+            element.textContent = text;
+            element.className = `response ${type}`;
+            element.style.display = 'block';
+        }
+    </script>
+</body>
+</html>
