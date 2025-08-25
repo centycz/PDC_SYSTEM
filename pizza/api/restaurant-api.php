@@ -2404,6 +2404,284 @@ if ($action === 'update-reservation') {
     }
 }
 
+    // GET BILL - Compute outstanding quantities and return bill summary
+    if ($action === 'get-bill') {
+        $table_number = intval($_GET['table'] ?? 0);
+        
+        if (!$table_number) {
+            jsend(false, null, 'Chybí číslo stolu!');
+            exit;
+        }
+        
+        try {
+            // Find active session for the table
+            $sessionQuery = $pdo->prepare("
+                SELECT id FROM table_sessions 
+                WHERE table_number = ? AND is_active = 1 
+                ORDER BY id DESC LIMIT 1
+            ");
+            $sessionQuery->execute([$table_number]);
+            $session = $sessionQuery->fetch(PDO::FETCH_ASSOC);
+            
+            if (!$session) {
+                jsend(true, [
+                    'table_number' => $table_number,
+                    'items' => [],
+                    'summary' => [],
+                    'prior_receipts' => [],
+                    'fully_paid' => true
+                ]);
+                exit;
+            }
+            
+            $session_id = $session['id'];
+            
+            // Get order items with outstanding quantities
+            // Note: We need to add paid_quantity column to order_items table
+            $itemsQuery = $pdo->prepare("
+                SELECT 
+                    oi.id,
+                    oi.item_type as src,
+                    oi.item_name as name,
+                    oi.unit_price,
+                    oi.quantity as qty_total,
+                    COALESCE(oi.paid_quantity, 0) as qty_paid,
+                    (oi.quantity - COALESCE(oi.paid_quantity, 0)) as qty_outstanding
+                FROM order_items oi
+                JOIN orders o ON oi.order_id = o.id
+                WHERE o.table_session_id = ? 
+                AND oi.status NOT IN ('cancelled')
+                AND (oi.quantity - COALESCE(oi.paid_quantity, 0)) > 0
+                ORDER BY oi.item_name, oi.id
+            ");
+            $itemsQuery->execute([$session_id]);
+            $allItems = $itemsQuery->fetchAll(PDO::FETCH_ASSOC);
+            
+            // Create aggregated summary by (name, unit_price)
+            $summary = [];
+            foreach ($allItems as $item) {
+                $key = $item['name'] . '|' . $item['unit_price'];
+                if (!isset($summary[$key])) {
+                    $summary[$key] = [
+                        'name' => $item['name'],
+                        'unit_price' => floatval($item['unit_price']),
+                        'qty_total' => 0,
+                        'qty_paid' => 0,
+                        'qty_outstanding' => 0,
+                        'total_outstanding_amount' => 0
+                    ];
+                }
+                
+                $summary[$key]['qty_total'] += intval($item['qty_total']);
+                $summary[$key]['qty_paid'] += intval($item['qty_paid']);
+                $summary[$key]['qty_outstanding'] += intval($item['qty_outstanding']);
+                $summary[$key]['total_outstanding_amount'] += floatval($item['unit_price']) * intval($item['qty_outstanding']);
+            }
+            
+            // Convert summary to indexed array
+            $summaryArray = array_values($summary);
+            
+            // Get prior partial receipts for this table
+            $receiptsQuery = $pdo->prepare("
+                SELECT 
+                    receipt_number,
+                    total_amount,
+                    paid_at,
+                    printed_at IS NOT NULL as printed,
+                    reprint_count
+                FROM completed_payments 
+                WHERE table_number = ?
+                ORDER BY paid_at DESC
+            ");
+            $receiptsQuery->execute([$table_number]);
+            $priorReceipts = $receiptsQuery->fetchAll(PDO::FETCH_ASSOC);
+            
+            // Check if fully paid
+            $fullyPaid = empty($allItems);
+            
+            jsend(true, [
+                'table_number' => $table_number,
+                'items' => $allItems,
+                'summary' => $summaryArray,
+                'prior_receipts' => $priorReceipts,
+                'fully_paid' => $fullyPaid
+            ]);
+            
+        } catch (Exception $e) {
+            error_log("get-bill error: " . $e->getMessage());
+            jsend(false, null, 'Chyba při načítání účtu: ' . $e->getMessage());
+        }
+    }
+
+    // CREATE RECEIPT - Process partial payment with optional printing
+    if ($action === 'create-receipt') {
+        $body = getJsonBody();
+        
+        $table_number = intval($body['table'] ?? 0);
+        $payment_method = $body['payment_method'] ?? 'cash';
+        $employee_name = $body['employee_name'] ?? null;
+        $print_receipt = $body['print'] ?? false;
+        $items = $body['items'] ?? [];
+        
+        if (!$table_number) {
+            jsend(false, null, 'Chybí číslo stolu!');
+            exit;
+        }
+        
+        if (!in_array($payment_method, ['cash', 'card'])) {
+            jsend(false, null, 'Neplatná platební metoda!');
+            exit;
+        }
+        
+        try {
+            $pdo->beginTransaction();
+            
+            // Find active session
+            $sessionQuery = $pdo->prepare("
+                SELECT id FROM table_sessions 
+                WHERE table_number = ? AND is_active = 1 
+                ORDER BY id DESC LIMIT 1
+            ");
+            $sessionQuery->execute([$table_number]);
+            $session = $sessionQuery->fetch(PDO::FETCH_ASSOC);
+            
+            if (!$session) {
+                $pdo->rollback();
+                jsend(false, null, 'Žádná aktivní session pro stůl ' . $table_number);
+                exit;
+            }
+            
+            $session_id = $session['id'];
+            
+            // If items array is empty, treat as full payment of all outstanding items
+            if (empty($items)) {
+                // Get all outstanding items
+                $outstandingQuery = $pdo->prepare("
+                    SELECT oi.id, (oi.quantity - COALESCE(oi.paid_quantity, 0)) as outstanding_qty
+                    FROM order_items oi
+                    JOIN orders o ON oi.order_id = o.id
+                    WHERE o.table_session_id = ? 
+                    AND oi.status NOT IN ('cancelled')
+                    AND (oi.quantity - COALESCE(oi.paid_quantity, 0)) > 0
+                ");
+                $outstandingQuery->execute([$session_id]);
+                $outstandingItems = $outstandingQuery->fetchAll(PDO::FETCH_ASSOC);
+                
+                foreach ($outstandingItems as $item) {
+                    $items[] = [
+                        'src' => 'order_item',
+                        'item_id' => $item['id'],
+                        'pay_qty' => $item['outstanding_qty']
+                    ];
+                }
+            }
+            
+            $receiptItems = [];
+            $totalAmount = 0;
+            
+            // Process each item
+            foreach ($items as $item) {
+                $item_id = intval($item['item_id'] ?? 0);
+                $pay_qty = intval($item['pay_qty'] ?? 0);
+                
+                if ($item_id <= 0 || $pay_qty <= 0) {
+                    continue;
+                }
+                
+                // Validate and update order item
+                $validateQuery = $pdo->prepare("
+                    SELECT oi.item_name, oi.unit_price, oi.quantity, COALESCE(oi.paid_quantity, 0) as paid_quantity
+                    FROM order_items oi
+                    JOIN orders o ON oi.order_id = o.id
+                    WHERE oi.id = ? AND o.table_session_id = ?
+                    AND oi.status NOT IN ('cancelled')
+                ");
+                $validateQuery->execute([$item_id, $session_id]);
+                $itemData = $validateQuery->fetch(PDO::FETCH_ASSOC);
+                
+                if (!$itemData) {
+                    $pdo->rollback();
+                    jsend(false, null, "Order item $item_id not found or invalid");
+                    exit;
+                }
+                
+                $outstandingQty = $itemData['quantity'] - $itemData['paid_quantity'];
+                if ($pay_qty > $outstandingQty) {
+                    $pdo->rollback();
+                    jsend(false, null, "Cannot pay $pay_qty of item {$itemData['item_name']}, only $outstandingQty outstanding");
+                    exit;
+                }
+                
+                // Update paid quantity
+                $updateQuery = $pdo->prepare("
+                    UPDATE order_items 
+                    SET paid_quantity = COALESCE(paid_quantity, 0) + ?
+                    WHERE id = ?
+                ");
+                $updateQuery->execute([$pay_qty, $item_id]);
+                
+                $receiptItems[] = [
+                    'name' => $itemData['item_name'],
+                    'unit_price' => floatval($itemData['unit_price']),
+                    'quantity' => $pay_qty,
+                    'total_price' => floatval($itemData['unit_price']) * $pay_qty
+                ];
+                
+                $totalAmount += floatval($itemData['unit_price']) * $pay_qty;
+            }
+            
+            if (empty($receiptItems)) {
+                $pdo->rollback();
+                jsend(false, null, 'Žádné platné položky k zaplacení!');
+                exit;
+            }
+            
+            // Generate receipt number
+            $pdo->exec("UPDATE counters SET current_value = current_value + 1 WHERE name = 'receipt'");
+            $receiptQuery = $pdo->query("SELECT current_value FROM counters WHERE name = 'receipt'");
+            $receiptNumber = $receiptQuery->fetchColumn();
+            
+            // Create receipt record
+            $printedAt = $print_receipt ? 'NOW()' : 'NULL';
+            $insertReceiptQuery = $pdo->prepare("
+                INSERT INTO completed_payments (
+                    receipt_number, table_number, session_id, total_amount, items_count,
+                    paid_at, payment_method, employee_name, items_json, printed_at, reprint_count
+                ) VALUES (?, ?, ?, ?, ?, NOW(), ?, ?, ?, $printedAt, 0)
+            ");
+            
+            $insertReceiptQuery->execute([
+                $receiptNumber,
+                $table_number,
+                $session_id,
+                $totalAmount,
+                count($receiptItems),
+                $payment_method,
+                $employee_name,
+                json_encode($receiptItems)
+            ]);
+            
+            $pdo->commit();
+            
+            jsend(true, [
+                'receipt_number' => $receiptNumber,
+                'table_number' => $table_number,
+                'total_amount' => $totalAmount,
+                'items_count' => count($receiptItems),
+                'items' => $receiptItems,
+                'payment_method' => $payment_method,
+                'employee_name' => $employee_name,
+                'printed' => $print_receipt,
+                'paid_at' => date('Y-m-d H:i:s')
+            ]);
+            
+        } catch (Exception $e) {
+            $pdo->rollback();
+            error_log("create-receipt error: " . $e->getMessage());
+            jsend(false, null, 'Chyba při vytváření účtu: ' . $e->getMessage());
+        }
+    }
+
     // DEFAULT CASE
     jsend(false, null, 'Neznámá akce: ' . $action);
 
