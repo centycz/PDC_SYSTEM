@@ -573,6 +573,61 @@
         </div>
     </div>
 
+    <!-- Modal pro potvrzení objednávky -->
+    <div id="confirmOrderModal" style="position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0,0,0,0.5); display: none; z-index: 1001;">
+        <div style="position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%); background: white; padding: 25px; border-radius: 10px; width: 90%; max-width: 500px; max-height: 90%; overflow-y: auto;">
+            <h3 style="margin: 0 0 20px 0; color: #333; text-align: center;">Potvrzení objednávky</h3>
+            
+            <!-- Číslo stolu -->
+            <div style="background: #f8f9fa; padding: 15px; border-radius: 8px; margin-bottom: 15px; text-align: center;">
+                <strong style="color: #38a169; font-size: 1.2em;">Stůl: <span id="confirmTableNumber"></span></strong>
+            </div>
+            
+            <!-- Seznam položek -->
+            <div style="margin-bottom: 15px;">
+                <h4 style="margin: 0 0 10px 0; color: #555;">Položky:</h4>
+                <div style="border: 1px solid #e9ecef; border-radius: 5px; overflow: hidden;">
+                    <table style="width: 100%; border-collapse: collapse;">
+                        <thead>
+                            <tr style="background: #f8f9fa;">
+                                <th style="padding: 8px; text-align: left; border-bottom: 1px solid #dee2e6;">Položka</th>
+                                <th style="padding: 8px; text-align: center; border-bottom: 1px solid #dee2e6;">Ks</th>
+                                <th style="padding: 8px; text-align: right; border-bottom: 1px solid #dee2e6;">Cena</th>
+                            </tr>
+                        </thead>
+                        <tbody id="confirmOrderItems">
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+            
+            <!-- Celkem -->
+            <div style="background: #f8f9fa; padding: 10px; border-radius: 5px; margin-bottom: 15px; text-align: right;">
+                <strong>Celkem: <span id="confirmTotalQty"></span> ks, <span id="confirmTotalPrice"></span> Kč</strong>
+            </div>
+            
+            <!-- Poznámka -->
+            <div style="margin-bottom: 15px;">
+                <strong>Poznámka: </strong>
+                <span id="confirmCustomerNote" style="font-style: italic;"></span>
+            </div>
+            
+            <!-- Rezervace -->
+            <div style="margin-bottom: 20px;">
+                <label style="display: flex; align-items: center; gap: 8px; cursor: pointer;">
+                    <input type="checkbox" id="confirmIsReserved" style="transform: scale(1.2);">
+                    <span>📅 Rezervovaná objednávka</span>
+                </label>
+            </div>
+            
+            <!-- Tlačítka -->
+            <div style="display: flex; gap: 10px; justify-content: center;">
+                <button id="confirmBackBtn" onclick="closeConfirmModal()" style="padding: 12px 25px; background: #6c757d; color: white; border: none; border-radius: 5px; cursor: pointer; font-size: 16px;">Zpět</button>
+                <button id="confirmSubmitBtn" onclick="confirmAndSendOrder()" style="padding: 12px 25px; background: #38a169; color: white; border: none; border-radius: 5px; cursor: pointer; font-size: 16px;">Potvrdit a odeslat</button>
+            </div>
+        </div>
+    </div>
+
     <script>
         // Konstanta pro RPi tiskárnu
         const PRINTER_API_URL = `http://${window.location.hostname}/pizza`;
@@ -1023,15 +1078,120 @@ function getTableCountText(count) {
             renderCart();
         }
 
-        // OPRAVENÁ FUNKCE PRO OBJEDNÁVKY
-        async function submitOrder() {
-            if (!cart.length || !selectedTable) return;
+        // FUNKCE PRO OTEVŘENÍ POTVRZOVACÍHO MODÁLU
+        function submitOrder() {
+            openConfirmModal();
+        }
+
+        function openConfirmModal() {
+            if (!cart || !cart.length || !selectedTable) return;
+            
+            // Populate modal with order details
+            populateConfirmModal();
+            
+            // Show modal
+            const modal = document.getElementById('confirmOrderModal');
+            if (modal) {
+                modal.style.display = 'block';
+            }
+        }
+
+        function populateConfirmModal() {
+            // Set table number with defensive programming
+            const table = tables && tables.find ? tables.find(t => t.table_number == selectedTable) : null;
+            const tableCode = table ? table.table_code : `Stůl ${selectedTable}`;
+            document.getElementById('confirmTableNumber').textContent = tableCode;
+            
+            // Aggregate identical items (same name, price, and note)
+            const aggregatedItems = {};
+            if (cart && cart.length > 0) {
+                cart.forEach(item => {
+                    const key = `${item.name}_${item.price}_${item.note || ''}`;
+                    if (aggregatedItems[key]) {
+                        aggregatedItems[key].qty += item.qty;
+                    } else {
+                        aggregatedItems[key] = {
+                            name: item.name,
+                            price: item.price,
+                            qty: item.qty,
+                            note: item.note
+                        };
+                    }
+                });
+            }
+            
+            // Populate items table
+            const itemsContainer = document.getElementById('confirmOrderItems');
+            if (itemsContainer) {
+                itemsContainer.innerHTML = '';
+                
+                let totalQty = 0;
+                let totalPrice = 0;
+                
+                const itemsArray = Object.values(aggregatedItems);
+                itemsArray.forEach(item => {
+                    totalQty += item.qty;
+                    const lineTotal = item.price * item.qty;
+                    totalPrice += lineTotal;
+                    
+                    const row = document.createElement('tr');
+                    row.innerHTML = `
+                        <td style="padding: 8px; border-bottom: 1px solid #f1f3f4;">
+                            ${escapeHtml(item.name)}
+                            ${item.note ? `<br><small style="color: #666;">📝 ${escapeHtml(item.note)}</small>` : ''}
+                        </td>
+                        <td style="padding: 8px; text-align: center; border-bottom: 1px solid #f1f3f4;">${item.qty}</td>
+                        <td style="padding: 8px; text-align: right; border-bottom: 1px solid #f1f3f4;">${lineTotal} Kč</td>
+                    `;
+                    itemsContainer.appendChild(row);
+                });
+                
+                // Set totals
+                const totalQtyEl = document.getElementById('confirmTotalQty');
+                const totalPriceEl = document.getElementById('confirmTotalPrice');
+                if (totalQtyEl) totalQtyEl.textContent = totalQty;
+                if (totalPriceEl) totalPriceEl.textContent = totalPrice;
+            }
+            
+            // Set customer note (limit display to 120 chars)
+            const customerNameEl = document.getElementById('customerName');
+            const customerName = customerNameEl ? customerNameEl.value.trim() : '';
+            const displayNote = customerName || '(bez poznámky)';
+            const truncatedNote = displayNote.length > 120 ? displayNote.substring(0, 120) + '...' : displayNote;
+            const noteEl = document.getElementById('confirmCustomerNote');
+            if (noteEl) noteEl.textContent = truncatedNote;
+            
+            // Set reservation status
+            const isReservedEl = document.getElementById('isReserved');
+            const confirmIsReservedEl = document.getElementById('confirmIsReserved');
+            if (isReservedEl && confirmIsReservedEl) {
+                const isReserved = isReservedEl.checked;
+                confirmIsReservedEl.checked = isReserved;
+            }
+        }
+
+        function closeConfirmModal() {
+            document.getElementById('confirmOrderModal').style.display = 'none';
+        }
+
+        // Helper function to escape HTML
+        function escapeHtml(text) {
+            const div = document.createElement('div');
+            div.textContent = text;
+            return div.innerHTML;
+        }
+
+        // REFACTORED FUNCTION - ACTUAL ORDER SUBMISSION
+        async function confirmAndSendOrder() {
+            // Sync reservation checkbox from modal to main form
+            const modalReserved = document.getElementById('confirmIsReserved').checked;
+            document.getElementById('isReserved').checked = modalReserved;
             
             console.log('=== SUBMIT ORDER START ===');
             console.log('Cart items before submission:', cart.length);
             
             const customerName = document.getElementById('customerName').value;
-            const isReserved = document.getElementById('isReserved').checked;
+            const isReserved = modalReserved; // Use value from modal
             const items = [];
             let orderWasCreated = false; // 🔑 Track if order was successfully created
             
@@ -1056,9 +1216,13 @@ function getTableCountText(count) {
                 is_reserved: isReserved
             });
             
-            // Disable button during processing
-            const submitBtn = document.getElementById('cartSubmit');
-            const originalText = submitBtn.textContent;
+            // Disable modal buttons during processing
+            const backBtn = document.getElementById('confirmBackBtn');
+            const submitBtn = document.getElementById('confirmSubmitBtn');
+            const originalBackText = backBtn.textContent;
+            const originalSubmitText = submitBtn.textContent;
+            
+            backBtn.disabled = true;
             submitBtn.disabled = true;
             submitBtn.textContent = 'Odesílám...';
             
@@ -1155,6 +1319,9 @@ function getTableCountText(count) {
                     refreshOrders();
                     refreshTables();
                     
+                    // Close modal on success
+                    closeConfirmModal();
+                    
                 } else {
                     // ❌ Objednávka nebyla vytvořena - pravá chyba
                     console.error('❌ ORDER CREATION FAILED - No order_id received:', orderResponse.error);
@@ -1176,8 +1343,12 @@ function getTableCountText(count) {
                 
                 showMsg('Chyba při odesílání: ' + error.message + ' - zkuste to znovu', false);
             } finally {
+                // Re-enable modal buttons
+                backBtn.disabled = false;
                 submitBtn.disabled = false;
-                submitBtn.textContent = originalText;
+                backBtn.textContent = originalBackText;
+                submitBtn.textContent = originalSubmitText;
+                
                 console.log('=== SUBMIT ORDER END ===');
                 console.log('Final cart length:', cart.length);
             }
@@ -1277,6 +1448,22 @@ function getTableCountText(count) {
 
         // Global functions pro onclick handlery
         window.logout = logout;
+
+        // Sync reservation checkbox changes from modal to main form
+        document.getElementById('confirmIsReserved').addEventListener('change', function() {
+            document.getElementById('isReserved').checked = this.checked;
+        });
+        
+        // Optional: ESC key to close modal (only when not submitting)
+        document.addEventListener('keydown', function(e) {
+            if (e.key === 'Escape') {
+                const modal = document.getElementById('confirmOrderModal');
+                const submitBtn = document.getElementById('confirmSubmitBtn');
+                if (modal.style.display === 'block' && !submitBtn.disabled) {
+                    closeConfirmModal();
+                }
+            }
+        });
 
         // Inicializace
         checkEmployeeName();
