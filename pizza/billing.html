@@ -1184,8 +1184,8 @@ function generateReceiptHistoryHTML(priorReceipts) {
 // Setup quantity input listeners
 function setupQuantityInputListeners() {
     document.querySelectorAll('.split-qty-input').forEach(input => {
-        input.addEventListener('input', calculateSplitTotal);
-        input.addEventListener('change', calculateSplitTotal);
+        input.addEventListener('input', updateUnifiedModalTotals);
+        input.addEventListener('change', updateUnifiedModalTotals);
     });
 }
 
@@ -1467,13 +1467,7 @@ function showUnifiedPaymentModal(outstandingItems, billData) {
                 <input type="text" id="split-employee-name" value="" placeholder="Zadejte jméno obsluhy" style="width: 100%; padding: 10px; border: 2px solid #ddd; border-radius: 8px;">
             </div>
 
-            <!-- Print Checkbox -->
-            <div style="text-align: center; margin: 15px 0;">
-                <label style="display: flex; align-items: center; justify-content: center; gap: 10px;">
-                    <input type="checkbox" id="split-print-checkbox" checked>
-                    <strong>📄 Vytisknout účtenku</strong>
-                </label>
-            </div>
+            <!-- Note: Receipt is always printed, no checkbox needed -->
 
             <!-- Total Display -->
             <div id="split-total-display" style="background: #ff5858; color: white; padding: 15px; border-radius: 8px; text-align: center; font-size: 1.4em; font-weight: bold; margin: 15px 0;">
@@ -1527,12 +1521,39 @@ function showUnifiedPaymentModal(outstandingItems, billData) {
     
     // Set initial payment mode to full
     setPaymentMode('full');
-    calculateSplitTotal();
+    updateUnifiedModalTotals();
+}
+
+// NEW unified modal totals calculation
+function updateUnifiedModalTotals() {
+    const qtyInputs = document.querySelectorAll('.split-qty-input');
+    let total = 0;
+    
+    qtyInputs.forEach((input, index) => {
+        const qty = parseInt(input.value) || 0;
+        const unitPrice = parseFloat(input.dataset.unitPrice) || 0;
+        const amount = qty * unitPrice;
+        
+        // Update individual item amount display
+        const itemTotalSpan = document.getElementById(`item-total-${index}`);
+        if (itemTotalSpan) {
+            itemTotalSpan.textContent = formatCurrency(amount);
+        }
+        
+        total += amount;
+    });
+    
+    // Update main total display
+    const totalDisplay = document.getElementById('split-total-display');
+    if (totalDisplay) {
+        totalDisplay.textContent = `Celkem k úhradě: ${formatCurrency(total)}`;
+    }
+}
 }
 
 function updateModalTotal() {
     // Legacy function - redirect to new implementation
-    calculateSplitTotal();
+    updateUnifiedModalTotals();
 }
 
 async function confirmSplitPay() {
@@ -1659,12 +1680,12 @@ setInterval(loadTables, 7000);
 
 // Globální funkce
 window.closeModal = closeModal;
-window.confirmSplitPay = confirmSplitPay;
+// window.confirmSplitPay = confirmSplitPay; // REMOVED - legacy function
 window.updateModalTotal = updateModalTotal;
-window.showConfirmModal = showConfirmModal;
-window.confirmPayAll = confirmPayAll;
+// window.showConfirmModal = showConfirmModal; // REMOVED - legacy function  
+// window.confirmPayAll = confirmPayAll; // REMOVED - legacy function
 window.changeQuantity = changeQuantity;
-window.paySplit = paySplit;
+// window.paySplit = paySplit; // REMOVED - legacy function
 window.showPaymentModal = showPaymentModal;
 window.showTableChangeModal = showTableChangeModal;
 window.closeTableChangeModal = closeTableChangeModal;
@@ -1673,6 +1694,9 @@ window.confirmTableChange = confirmTableChange;
 window.reprintReceipt = reprintReceipt;
 window.togglePaymentMode = togglePaymentMode;
 window.confirmUnifiedPay = confirmUnifiedPay;
+// New unified functions
+window.updateUnifiedModalTotals = updateUnifiedModalTotals;
+window.setPaymentMode = setPaymentMode;
 // Proměnné pro zrušení položky
 let cancelItemIds = [];
 let cancelItemData = {};
@@ -1922,9 +1946,10 @@ function aggregateItems(items) {
         const unitPrice = parseFloat(getItemValue(item, 'unit_price', 'price')) || 0;
         const outstandingQty = getItemValue(item, 'qty_outstanding', 'outstanding_qty');
         const itemId = getItemValue(item, 'id', 'item_id');
+        const note = getItemValue(item, 'note', 'note') || '';
         
-        // Create unique key for same name + price combinations
-        const key = `${itemName}_${unitPrice}`;
+        // Create unique key that includes note to differentiate items with same name but different variants
+        const key = `${itemName}_${unitPrice}_${note}`;
         
         if (itemMap.has(key)) {
             const existing = itemMap.get(key);
@@ -1935,6 +1960,7 @@ function aggregateItems(items) {
                 name: itemName,
                 unit_price: unitPrice,
                 qty_outstanding: parseInt(outstandingQty),
+                note: note,
                 ids: [itemId],
                 aggregated: true
             });
@@ -1950,18 +1976,22 @@ function generateAggregatedItemsHTML(aggregatedItems) {
         const outstandingQty = item.qty_outstanding;
         const itemName = item.name;
         const unitPrice = item.unit_price;
+        const note = item.note || '';
         const itemIds = item.ids.join(','); // Store multiple IDs for processing
         
         return `
             <tr>
-                <td style="padding: 8px 12px; text-align: left; border-bottom: 1px solid #ddd;">${itemName}</td>
+                <td style="padding: 8px 12px; text-align: left; border-bottom: 1px solid #ddd;">
+                    ${itemName}
+                    ${note ? `<br><small style="color: #666; font-style: italic;">${note}</small>` : ''}
+                </td>
                 <td style="padding: 8px 12px; text-align: left; border-bottom: 1px solid #ddd;">${formatCurrency(unitPrice)}</td>
                 <td style="padding: 8px 12px; text-align: left; border-bottom: 1px solid #ddd;">${outstandingQty}×</td>
                 <td style="padding: 8px 12px; text-align: left; border-bottom: 1px solid #ddd;">
                     <input type="number" class="split-qty-input" min="0" max="${outstandingQty}" value="0" 
                            data-item-ids="${itemIds}" data-unit-price="${unitPrice}" data-index="${idx}"
                            style="width: 60px; padding: 4px 8px; border: 1px solid #ddd; border-radius: 4px; text-align: center;"
-                           onchange="calculateSplitTotal()">
+                           onchange="updateUnifiedModalTotals()">
                 </td>
                 <td style="padding: 8px 12px; text-align: left; border-bottom: 1px solid #ddd;">
                     <span class="item-total" id="item-total-${idx}">0 Kč</span>
@@ -2007,23 +2037,44 @@ function setPaymentMode(mode) {
         if (header) header.textContent = 'K úhradě';
     }
     
-    calculateSplitTotal();
+    updateUnifiedModalTotals();
 }
 
-// Pre-fill employee name from session
+// Pre-fill employee name from localStorage with session fallback
 async function prefillEmployeeName() {
+    const employeeNameInput = document.getElementById('split-employee-name');
+    if (!employeeNameInput) return;
+    
+    // First try localStorage
+    const storedEmployeeName = localStorage.getItem('employee_name');
+    if (storedEmployeeName && storedEmployeeName.trim()) {
+        employeeNameInput.value = storedEmployeeName.trim();
+        return;
+    }
+    
+    // Fallback to session API
     try {
         const response = await fetch('/pizza/api/get-session-user.php');
         if (response.ok) {
             const data = await response.json();
             if (data.success && data.full_name) {
-                document.getElementById('split-employee-name').value = data.full_name;
+                employeeNameInput.value = data.full_name;
+                // Save to localStorage for next time
+                localStorage.setItem('employee_name', data.full_name);
             }
         }
     } catch (error) {
         console.log('Could not fetch session user info:', error);
         // Not critical - user can still enter name manually
     }
+    
+    // Add event listener to save employee name to localStorage when changed
+    employeeNameInput.addEventListener('blur', function() {
+        const name = this.value.trim();
+        if (name) {
+            localStorage.setItem('employee_name', name);
+        }
+    });
 }
 
 // New unified payment confirmation function
@@ -2047,51 +2098,62 @@ async function confirmUnifiedPay() {
             return;
         }
         
-        // Get print option
-        const printReceipt = document.getElementById('split-print-checkbox').checked;
+        // Check if we're in full payment mode
+        const isFullPayment = document.getElementById('full-payment-btn').classList.contains('active');
         
-        // Collect selected items and quantities
-        const selectedItems = [];
-        document.querySelectorAll('.split-qty-input').forEach((input, index) => {
-            const qty = parseInt(input.value) || 0;
-            if (qty > 0) {
-                const itemIds = input.dataset.itemIds.split(',');
-                const unitPrice = parseFloat(input.dataset.unitPrice);
-                
-                // For aggregated items, we need to distribute quantities across individual IDs
-                const qtyPerItem = Math.floor(qty / itemIds.length);
-                const remainder = qty % itemIds.length;
-                
-                itemIds.forEach((itemId, idIndex) => {
-                    const itemQty = qtyPerItem + (idIndex < remainder ? 1 : 0);
-                    if (itemQty > 0) {
-                        selectedItems.push({
-                            item_id: parseInt(itemId),
-                            quantity: itemQty
-                        });
-                    }
-                });
-            }
-        });
+        let selectedItems = [];
         
-        if (selectedItems.length === 0) {
+        if (isFullPayment) {
+            // Full payment mode: items should be empty array
+            selectedItems = [];
+        } else {
+            // Partial payment mode: collect selected items and quantities
+            document.querySelectorAll('.split-qty-input').forEach((input) => {
+                const qty = parseInt(input.value) || 0;
+                if (qty > 0) {
+                    const itemIds = input.dataset.itemIds.split(',');
+                    
+                    // For aggregated items, distribute quantities across individual IDs
+                    const qtyPerItem = Math.floor(qty / itemIds.length);
+                    const remainder = qty % itemIds.length;
+                    
+                    itemIds.forEach((itemId, idIndex) => {
+                        const itemQty = qtyPerItem + (idIndex < remainder ? 1 : 0);
+                        if (itemQty > 0) {
+                            selectedItems.push({
+                                src: 'order_item',
+                                item_id: parseInt(itemId),
+                                pay_qty: itemQty
+                            });
+                        }
+                    });
+                }
+            });
+        }
+        
+        // For partial payment, validate that we have items selected
+        if (!isFullPayment && selectedItems.length === 0) {
             alert('Prosím vyberte alespoň jednu položku k platbě');
             createBtn.disabled = false;
             createBtn.textContent = 'ZAPLATIT';
             return;
         }
         
+        // Create receipt payload
+        const receiptPayload = {
+            table: lastSplitTable,
+            payment_method: paymentMethod,
+            employee_name: employeeName,
+            print: true, // Always print receipts
+            doc_type: 'receipt', // Specify document type for printer routing
+            items: selectedItems
+        };
+        
         // Create receipt
         const response = await fetch(API + '?action=create-receipt', {
             method: 'POST',
             headers: {'Content-Type': 'application/json'},
-            body: JSON.stringify({
-                table: lastSplitTable,
-                payment_method: paymentMethod,
-                employee_name: employeeName,
-                print: printReceipt,
-                items: selectedItems
-            })
+            body: JSON.stringify(receiptPayload)
         });
         
         const result = await response.json();
@@ -2101,7 +2163,7 @@ async function confirmUnifiedPay() {
         }
         
         const receiptNumber = result.data.receipt_number || result.data.number;
-        alert(`Účtenka #${receiptNumber} byla úspěšně vystavena${printReceipt ? ' a vytištěna' : ''}.`);
+        alert(`Účtenka #${receiptNumber} byla úspěšně vystavena a vytištěna.`);
         
         // Close modal and reload tables
         closeModal();
