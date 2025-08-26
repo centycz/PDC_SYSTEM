@@ -49,6 +49,18 @@ try {
 
     // Process order items
     $pizzaCount = 0;
+    
+    // Cache schema check for defensive insert (prevents runtime errors if migration not yet applied)
+    static $orderItemsColumns = null;
+    if ($orderItemsColumns === null) {
+        try {
+            $orderItemsColumns = $pdo->query("SHOW COLUMNS FROM order_items")->fetchAll(PDO::FETCH_COLUMN);
+        } catch (PDOException $e) {
+            // If table doesn't exist, use minimal column set and let migration handle full schema
+            $orderItemsColumns = ['order_id', 'item_type', 'item_name', 'unit_price', 'quantity', 'note', 'status'];
+        }
+    }
+    
     foreach ($payload['items'] ?? [] as $item) {
         $qty = (int)($item['qty'] ?? $item['quantity'] ?? 1);
         if ($qty < 1) $qty = 1;
@@ -58,19 +70,31 @@ try {
             $pizzaCount += $qty;
         }
 
-        // Insert into order_items (assuming this table structure exists based on restaurant-api.php)
-        $stmt = $pdo->prepare("
-            INSERT INTO order_items (order_id, item_type, item_name, unit_price, quantity, note, status, created_at, updated_at) 
-            VALUES (?, ?, ?, ?, ?, ?, 'pending', NOW(), NOW())
-        ");
-        $stmt->execute([
+        // Build defensive INSERT query based on available columns
+        $columns = ['order_id', 'item_type', 'item_name', 'unit_price', 'quantity', 'note', 'status'];
+        $values = ['?', '?', '?', '?', '?', '?', "'pending'"];
+        $params = [
             $orderId,
             $type,
             $item['name'] ?? '',
             $item['price'] ?? $item['unit_price'] ?? 0,
             $qty,
             $item['note'] ?? ''
-        ]);
+        ];
+        
+        // Add timestamp columns only if they exist (defensive against missing migration)
+        if (in_array('created_at', $orderItemsColumns)) {
+            $columns[] = 'created_at';
+            $values[] = 'NOW()';
+        }
+        if (in_array('updated_at', $orderItemsColumns)) {
+            $columns[] = 'updated_at';
+            $values[] = 'NOW()';
+        }
+        
+        $sql = "INSERT INTO order_items (" . implode(', ', $columns) . ") VALUES (" . implode(', ', $values) . ")";
+        $stmt = $pdo->prepare($sql);
+        $stmt->execute($params);
     }
 
     // Commit transaction if we started it
