@@ -35,11 +35,45 @@
         .bill-status.zaplaceno { background: #0e472e; color: #fff;}
         .bill-total { font-weight: bold; color: #ff5858; font-size: 1.1em; text-align:right; margin-top: 7px;}
         .paid-info { color: #198754; font-size: 0.93em; margin-left: 8px;}
+        
+        /* Main amount display */
+        .main-amount { 
+            background: #e3f2fd; 
+            border: 2px solid #2196F3; 
+            border-radius: 12px; 
+            padding: 15px; 
+            margin: 15px 0; 
+            text-align: center; 
+        }
+        .amount-label { font-size: 14px; color: #1976D2; margin-bottom: 5px; font-weight: 500; }
+        .amount-value { font-size: 22px; font-weight: bold; color: #1976D2; }
+        
+        /* Paid badge */
+        .paid-badge { 
+            background: #4caf50; 
+            color: white; 
+            font-size: 0.8em; 
+            padding: 4px 8px; 
+            border-radius: 12px; 
+            margin-left: 10px; 
+            font-weight: bold; 
+        }
+        
+        /* Fully paid table styling */
+        .order-card.fully-paid { 
+            border-color: #4caf50; 
+            background: #f8fff8; 
+        }
+        .order-card.fully-paid .main-amount { 
+            background: #e8f5e8; 
+            border-color: #4caf50; 
+        }
+        .order-card.fully-paid .amount-label { color: #2e7d32; }
+        .order-card.fully-paid .amount-value { color: #2e7d32; }
+        
         .btn { padding: 8px 16px; border: none; border-radius: 8px; font-weight: bold; font-size: 14px; cursor: pointer; transition: all 0.3s ease;}
         .btn-pay { background: #ff5858; color: white; margin-top: 9px;}
         .btn-pay:hover { background: #f09819; }
-        .btn-split { background: #f09819; color: #fff; margin-top: 9px; margin-left: 7px;}
-        .btn-split:hover { background: #ff5858; }
         .last-update { text-align: center; color: #666; font-size: 0.95em; margin-top: 15px;}
         .empty-state { text-align: center; padding: 40px 20px; color: #999;}
         .empty-state .icon { font-size: 4em; margin-bottom: 20px; display: block;}
@@ -748,38 +782,46 @@ async function loadTables() {
         // ✅ OPRAVA: Načti bill pro každý stůl bez ohledu na status - USE get-bill
         const billRes = await fetch(API + '?action=get-bill&table=' + table.table_number);
         let items = [];
+        let allItemsCount = 0; // Total items including paid ones
         try { 
             const bill = await billRes.json();
             console.log('Bill response for table', table.table_number, ':', bill);
-            if (bill.success && bill.data && bill.data.items) {
+            if (bill.success && bill.data) {
+                // Get all items first
+                const allItems = bill.data.items || [];
+                allItemsCount = allItems.length;
+                
                 // Filter items with outstanding quantity > 0
-                items = bill.data.items.filter(item => {
+                items = allItems.filter(item => {
                     const outstandingQty = getItemValue(item, 'qty_outstanding', 'outstanding_qty', 'outstanding_quantity');
                     return outstandingQty > 0;
                 });
+                
+                // Check if table has recent receipts (recently paid)
+                const priorReceipts = bill.data.prior_receipts || [];
+                const hasRecentReceipts = priorReceipts.length > 0;
+                table.hasRecentReceipts = hasRecentReceipts;
+                table.fullyPaid = bill.data.fully_paid || false;
             }
         } catch(e){
             console.error('Error loading bill for table', table.table_number, ':', e);
         }
         
         console.log('Items count for table', table.table_number, ':', items.length);
+        console.log('Total items (including paid):', allItemsCount);
         console.log('Items:', items);
         
-        // ✅ ZMĚNA: Zobraz stůl pokud má jakékoliv nezrušené položky
-        if (items.length === 0) {
-            console.log('Skipping table', table.table_number, '- no items');
+        // Show table if it has outstanding items OR if it was recently paid (has receipts but no outstanding items)
+        const hasOutstandingItems = items.length > 0;
+        const shouldShowTable = hasOutstandingItems || (table.hasRecentReceipts && allItemsCount > 0);
+        
+        if (!shouldShowTable) {
+            console.log('Skipping table', table.table_number, '- no items and no recent activity');
             continue;
         }
 
-        // ✅ OPRAVA: Check if table has any outstanding items
-        const hasOutstandingItems = items.length > 0;
         console.log('Has outstanding items for table', table.table_number, ':', hasOutstandingItems);
-        
-        if (!hasOutstandingItems) {
-            console.log('No outstanding items for table', table.table_number, '- marking as cleaned if needed');
-            // Note: Table cleanup will be handled by the API when all items are paid
-            continue;
-        }
+        console.log('Has recent receipts for table', table.table_number, ':', table.hasRecentReceipts);
 
         // Calculate amounts based on get-bill data structure
         let outstandingAmount = 0;
@@ -968,12 +1010,25 @@ function getBillItemClass(status) {
         const outstandingAmount = t.outstandingAmount || 0;
         const hasAnyItems = items.length > 0;
 
+        // Check if table is fully paid
+        const isFullyPaid = outstandingAmount === 0 && !hasAnyItems;
+        
         return `
-        <div class="order-card">
+        <div class="order-card ${isFullyPaid ? 'fully-paid' : ''}">
     <div class="order-header">
-        <div class="table-number">${t.table_code}</div>
+        <div class="table-number">
+            ${t.table_code}
+            ${isFullyPaid ? '<span class="paid-badge">Uhrazeno</span>' : ''}
+        </div>
         <div class="order-time">${t.status === 'occupied' ? 'Obsazeno' : t.status}</div>
     </div>
+    
+    <!-- Main highlighted amount -->
+    <div class="main-amount">
+        <div class="amount-label">Zbývá k úhradě</div>
+        <div class="amount-value">${formatCurrency(outstandingAmount)}</div>
+    </div>
+    
     <div class="order-items">
         <ul class="bill-list">
         ${items.map(item => {
@@ -993,14 +1048,10 @@ function getBillItemClass(status) {
             `;
         }).join('')}
         </ul>
-        <div class="bill-total">Zbývá k úhradě: ${formatCurrency(outstandingAmount)}</div>
     </div>
     <div class="order-actions">
-   <button class="btn btn-pay" onclick="payAll(${t.table_number}, this)" ${!hasAnyItems ? 'disabled' : ''} style="${!hasAnyItems ? 'opacity:0.5;' : ''}">
-     ZAPLATIT VŠE
-   </button>
-   <button class="btn btn-split" onclick="paySplit(${t.table_number}, this)" ${!hasAnyItems ? 'disabled' : ''} style="${!hasAnyItems ? 'opacity:0.5;' : ''}">
-     ROZDĚLIT ÚČET
+   <button class="btn btn-pay" onclick="paySplit(${t.table_number}, this)" ${!hasAnyItems ? 'disabled' : ''} style="${!hasAnyItems ? 'opacity:0.5;' : ''}">
+     PLATBA
    </button>
 
    <button class="btn btn-change-table" onclick="showTableChangeModal(${t.table_number}, '${t.table_code}', ${outstandingAmount})">
@@ -1010,83 +1061,6 @@ function getBillItemClass(status) {
 </div>
 `;
     }).join('');
-}
-
-// MODAL PRO ZAPLACENÍ CELÉ OBJEDNÁVKY
-function showConfirmModal(table_number) {
-    currentTableToPay = table_number;
-    
-    console.log('=== SHOWCONFIRMMODAL DEBUG ===');
-    console.log('Table number:', table_number);
-    console.log('All tables:', tables);
-    
-    const table = tables.find(t => t.table_number == table_number); // ✅ Použij == místo ===
-    console.log('Found table:', table);
-    
-    if (table && table.billItems) {
-        console.log('Bill items for table:', table.billItems);
-        
-        // Projdi každou položku
-        table.billItems.forEach(item => {
-            console.log(`Item: ${item.item_name}, Status: ${item.status}, Qty: ${item.qty}, Unit price: ${item.unit_price}, Total: ${item.qty * item.unit_price}`);
-        });
-    }
-    
-    let totalAmount = 0;
-    
-    if (table && table.outstandingAmount) {
-        totalAmount = table.outstandingAmount;
-        console.log('Outstanding amount:', totalAmount);
-    }
-    
-    console.log('Final amount:', totalAmount);
-    console.log('=== END DEBUG ===');
-    
-    const modalBg = document.getElementById('modal-bg');
-    modalBg.style.display = 'flex';
-
-    modalBg.innerHTML = `
-        <div class="confirm-modal">
-            <h3>Zaplatit celou objednávku?</h3>
-            
-            <div class="payment-amounts" style="margin: 20px 0;">
-                <div style="
-                    background: #e3f2fd;
-                    border: 2px solid #2196F3;
-                    border-radius: 8px;
-                    padding: 15px;
-                    margin-bottom: 10px;
-                    text-align: center;
-                ">
-                    <div style="font-size: 14px; color: #1976D2; margin-bottom: 8px;">💰 Zbývající částka k úhradě</div>
-                    <div style="font-size: 24px; font-weight: bold; color: #1976D2;">${totalAmount} Kč</div>
-                </div>
-            </div>
-            
-            <div class="payment-method-section">
-                <div class="payment-method-label">Vyberte způsob platby:</div>
-                <div class="payment-options">
-                    <label class="payment-option selected" for="payment-cash">
-                        <input type="radio" id="payment-cash" name="payment-method" value="cash" checked>
-                        <div class="payment-icon">💵</div>
-                        <div class="payment-text">Hotovost</div>
-                    </label>
-                    <label class="payment-option" for="payment-card">
-                        <input type="radio" id="payment-card" name="payment-method" value="card">
-                        <div class="payment-icon">💳</div>
-                        <div class="payment-text">Karta</div>
-                    </label>
-                </div>
-            </div>
-
-            <div class="confirm-modal-btns">
-                <button class="confirm-modal-btn ok" onclick="confirmPayAll()">ZAPLATIT ${totalAmount} Kč</button>
-                <button class="confirm-modal-btn cancel" onclick="closeModal()">ZPĚT</button>
-            </div>
-        </div>
-    `;
-    
-    setupPaymentOptionListeners('.payment-option');
 }
 
 // MODAL PRO ROZDĚLENÍ ÚČTU - ENHANCED WITH RECEIPT FUNCTIONALITY
@@ -1110,7 +1084,11 @@ function showSplitModal(outstandingItems, billData) {
 
     modalBg.innerHTML = `
         <div class="modal" style="max-width: 800px; max-height: 90vh; overflow-y: auto;">
-            <h3>💰 Účtenka pro stůl ${getTableCodeByNumber(lastSplitTable)}</h3>
+            <h3>💰 Platba – stůl ${getTableCodeByNumber(lastSplitTable)}</h3>
+            
+            <div style="background: #e8f4fd; border: 1px solid #bee5eb; border-radius: 8px; padding: 15px; margin: 15px 0; font-size: 0.95em; color: #004085;">
+                <strong>ℹ️ Informace:</strong> Všechny položky jsou předvyplněny k plné úhradě. Pro částečnou platbu upravte množství jednotlivých položek.
+            </div>
             
             <!-- Outstanding Items Section -->
             <div class="receipt-items-section" style="margin-bottom: 20px;">
@@ -1153,7 +1131,7 @@ function showSplitModal(outstandingItems, billData) {
             <!-- Employee Name Section -->
             <div style="margin: 15px 0;">
                 <div style="font-weight: bold; margin-bottom: 8px;">👨‍💼 Jméno obsluhy:</div>
-                <input type="text" id="split-employee-name" placeholder="Zadejte jméno obsluhy" style="width: 100%; padding: 10px; border: 2px solid #ddd; border-radius: 8px;">
+                <input type="text" id="split-employee-name" placeholder="Zadejte jméno obsluhy" value="Obsluha" style="width: 100%; padding: 10px; border: 2px solid #ddd; border-radius: 8px;">
             </div>
 
             <!-- Print Checkbox -->
@@ -1173,7 +1151,7 @@ function showSplitModal(outstandingItems, billData) {
             ${generateReceiptHistoryHTML(priorReceipts)}
 
             <div class="modal-btns">
-                <button class="modal-btn" id="split-create-receipt-btn" onclick="confirmSplitPay()">ZAPLATIT VYBRANÉ</button>
+                <button class="modal-btn" id="split-create-receipt-btn" onclick="confirmSplitPay()">ZAPLATIT</button>
                 <button class="modal-btn cancel" onclick="closeModal()">ZPĚT</button>
             </div>
         </div>
@@ -1199,7 +1177,7 @@ function generateOutstandingItemsHTML(outstandingItems) {
                 <td style="padding: 8px 12px; text-align: left; border-bottom: 1px solid #ddd;">${formatCurrency(unitPrice)}</td>
                 <td style="padding: 8px 12px; text-align: left; border-bottom: 1px solid #ddd;">${outstandingQty}</td>
                 <td style="padding: 8px 12px; text-align: left; border-bottom: 1px solid #ddd;">
-                    <input type="number" class="split-qty-input" min="0" max="${outstandingQty}" value="0" 
+                    <input type="number" class="split-qty-input" min="0" max="${outstandingQty}" value="${outstandingQty}" 
                            data-item-id="${itemId}" data-unit-price="${unitPrice}" data-index="${idx}"
                            style="width: 60px; padding: 4px 8px; border: 1px solid #ddd; border-radius: 4px; text-align: center;"
                            onchange="calculateSplitTotal()">
@@ -1344,71 +1322,6 @@ function closeModal() {
     modalBg.style.display = 'none';
     modalBg.innerHTML = '';
     currentTableToPay = null;
-}
-
-function confirmPayAll() {
-    const paymentMethod = document.querySelector('input[name="payment-method"]:checked').value;
-    console.log('Způsob platby:', paymentMethod);
-    payAll(currentTableToPay, null, paymentMethod);  // ✅ PŘIDÁN paymentMethod
-    closeModal();
-}
-
-function payAll(table_number, btn, paymentMethod = 'cash') {
-    if (btn) { btn.disabled = true; btn.textContent = 'Zpracovávám...'; }
-    console.log('PayAll called for table:', table_number, 'payment method:', paymentMethod);
-    
-    fetch(API + '?action=get-bill&table=' + table_number)
-    .then(r=>r.json())
-    .then(res => {
-        console.log('Get bill response:', res);
-        if (!res.success) {
-            throw new Error(res.error || 'Chyba při načítání účtu');
-        }
-        
-        const items = res.data.items || [];
-        
-        if (items.length === 0) {
-            if (btn) { btn.disabled = false; btn.textContent = 'ZAPLATIT VŠE'; }
-            loadTables();
-            return;
-        }
-
-        // Create receipt request for full payment (empty items array means pay all)
-        fetch(API + '?action=create-receipt', {
-            method: 'POST',
-            headers: {'Content-Type':'application/json'},
-            body: JSON.stringify({
-                table: table_number,
-                payment_method: paymentMethod,
-                employee_name: 'Admin', // Default employee name
-                print: true,
-                items: [] // Empty items array means pay all outstanding
-            })
-        })
-        .then(r=>r.json())
-        .then(res => {
-            console.log('Create receipt response:', res);
-            if (!res.success) {
-                throw new Error(res.error || 'Chyba při vytváření účtenky');
-            }
-            
-            const receiptNumber = res.data.receipt_number || res.data.number;
-            alert(`Účtenka #${receiptNumber} vytvořena a vytištěna.`);
-            
-            if (btn) { btn.disabled = false; btn.textContent = 'ZAPLATIT VŠE'; }
-            loadTables();
-        })
-        .catch(error => {
-            console.error('Error creating receipt:', error);
-            if (btn) { btn.disabled = false; btn.textContent = 'ZAPLATIT VŠE'; }
-            alert('Chyba při platbě: ' + error.message);
-        });
-    })
-    .catch(error => {
-        console.error('Error loading bill:', error);
-        if (btn) { btn.disabled = false; btn.textContent = 'ZAPLATIT VŠE'; }
-        alert('Chyba při načítání účtu: ' + error.message);
-    });
 }
 
 function paySplit(table_number, btn) {
@@ -1569,8 +1482,6 @@ setInterval(loadTables, 7000);
 window.closeModal = closeModal;
 window.confirmSplitPay = confirmSplitPay;
 window.updateModalTotal = updateModalTotal;
-window.showConfirmModal = showConfirmModal;
-window.confirmPayAll = confirmPayAll;
 window.changeQuantity = changeQuantity;
 window.paySplit = paySplit;
 window.showTableChangeModal = showTableChangeModal;
