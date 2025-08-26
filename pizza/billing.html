@@ -1086,100 +1086,10 @@ function showConfirmModal(table_number) {
     setupPaymentOptionListeners('.payment-option');
 }
 
-// MODAL PRO ROZDĚLENÍ ÚČTU - ENHANCED WITH RECEIPT FUNCTIONALITY
+// LEGACY MODAL - REDIRECTS TO NEW UNIFIED MODAL FOR CONSISTENCY
 function showSplitModal(outstandingItems, billData) {
-    const modalBg = document.getElementById('modal-bg');
-    modalBg.style.display = 'flex';
-
-    if (!outstandingItems || outstandingItems.length === 0) {
-        modalBg.innerHTML = `
-            <div class="modal">
-                <h3>Všechny položky jsou zaplaceny</h3>
-                <div class="modal-btns">
-                    <button class="modal-btn cancel" onclick="closeModal()">ZPĚT</button>
-                </div>
-            </div>
-        `;
-        return;
-    }
-
-    const priorReceipts = billData.prior_receipts || [];
-
-    modalBg.innerHTML = `
-        <div class="modal" style="max-width: 800px; max-height: 90vh; overflow-y: auto;">
-            <h3>💰 Účtenka pro stůl ${getTableCodeByNumber(lastSplitTable)}</h3>
-            
-            <!-- Outstanding Items Section -->
-            <div class="receipt-items-section" style="margin-bottom: 20px;">
-                <div style="font-size: 1.2em; font-weight: bold; color: #f09819; margin-bottom: 15px; border-bottom: 2px solid #f09819; padding-bottom: 5px;">
-                    🍕 Nezaplacené položky
-                </div>
-                <table style="width: 100%; border-collapse: collapse; margin-bottom: 15px;">
-                    <thead>
-                        <tr>
-                            <th style="background: #f8f9fa; font-weight: bold; color: #333; padding: 8px 12px; text-align: left; border-bottom: 1px solid #ddd;">Položka</th>
-                            <th style="background: #f8f9fa; font-weight: bold; color: #333; padding: 8px 12px; text-align: left; border-bottom: 1px solid #ddd;">Cena/ks</th>
-                            <th style="background: #f8f9fa; font-weight: bold; color: #333; padding: 8px 12px; text-align: left; border-bottom: 1px solid #ddd;">Zbývá</th>
-                            <th style="background: #f8f9fa; font-weight: bold; color: #333; padding: 8px 12px; text-align: left; border-bottom: 1px solid #ddd;">K úhradě</th>
-                            <th style="background: #f8f9fa; font-weight: bold; color: #333; padding: 8px 12px; text-align: left; border-bottom: 1px solid #ddd;">Částka</th>
-                        </tr>
-                    </thead>
-                    <tbody id="split-items-tbody">
-                        ${generateOutstandingItemsHTML(outstandingItems)}
-                    </tbody>
-                </table>
-            </div>
-
-            <!-- Payment Method Section -->
-            <div class="modal-payment-section">
-                <div class="modal-payment-label">Vyberte způsob platby:</div>
-                <div class="modal-payment-options">
-                    <label class="modal-payment-option selected" for="split-payment-cash">
-                        <input type="radio" id="split-payment-cash" name="split-payment-method" value="cash" checked>
-                        <div class="modal-payment-icon">💵</div>
-                        <div class="modal-payment-text">Hotovost</div>
-                    </label>
-                    <label class="modal-payment-option" for="split-payment-card">
-                        <input type="radio" id="split-payment-card" name="split-payment-method" value="card">
-                        <div class="modal-payment-icon">💳</div>
-                        <div class="modal-payment-text">Karta</div>
-                    </label>
-                </div>
-            </div>
-
-            <!-- Employee Name Section -->
-            <div style="margin: 15px 0;">
-                <div style="font-weight: bold; margin-bottom: 8px;">👨‍💼 Jméno obsluhy:</div>
-                <input type="text" id="split-employee-name" placeholder="Zadejte jméno obsluhy" style="width: 100%; padding: 10px; border: 2px solid #ddd; border-radius: 8px;">
-            </div>
-
-            <!-- Print Checkbox -->
-            <div style="text-align: center; margin: 15px 0;">
-                <label style="display: flex; align-items: center; justify-content: center; gap: 10px;">
-                    <input type="checkbox" id="split-print-checkbox" checked>
-                    <strong>📄 Vytisknout účtenku</strong>
-                </label>
-            </div>
-
-            <!-- Total Display -->
-            <div id="split-total-display" style="background: #ff5858; color: white; padding: 15px; border-radius: 8px; text-align: center; font-size: 1.4em; font-weight: bold; margin: 15px 0;">
-                Celkem k úhradě: 0 Kč
-            </div>
-
-            <!-- Receipt History Section -->
-            ${generateReceiptHistoryHTML(priorReceipts)}
-
-            <div class="modal-btns">
-                <button class="modal-btn" id="split-create-receipt-btn" onclick="confirmSplitPay()">ZAPLATIT VYBRANÉ</button>
-                <button class="modal-btn cancel" onclick="closeModal()">ZPĚT</button>
-            </div>
-        </div>
-    `;
-
-    // Setup event listeners
-    setupPaymentOptionListeners('.modal-payment-option');
-    setupQuantityInputListeners();
-    calculateSplitTotal();
+    // Redirect all old split modal calls to the new unified payment modal
+    showUnifiedPaymentModal(outstandingItems, billData);
 }
 
 // Helper function to generate outstanding items HTML for receipt modal
