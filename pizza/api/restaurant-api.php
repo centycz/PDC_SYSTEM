@@ -2742,6 +2742,112 @@ if ($action === 'update-reservation') {
         }
     }
 
+    // ADJUST ORDER ITEM QUANTITY - Modify quantity of an existing order item
+    if ($action === 'adjust-order-item-quantity') {
+        $body = getJsonBody();
+        
+        $order_item_id = intval($body['order_item_id'] ?? 0);
+        $new_quantity = intval($body['new_quantity'] ?? 0);
+        $reason = trim($body['reason'] ?? '');
+        $employee_name = trim($body['employee_name'] ?? '');
+        
+        if (!$order_item_id) {
+            jsend(false, null, 'Chybí ID položky objednávky!');
+            exit;
+        }
+        
+        if ($new_quantity < 1) {
+            jsend(false, null, 'Nové množství musí být alespoň 1!');
+            exit;
+        }
+        
+        try {
+            $pdo->beginTransaction();
+            
+            // Get current item data
+            $itemQuery = $pdo->prepare("
+                SELECT oi.id, oi.order_id, oi.quantity, COALESCE(oi.paid_quantity, 0) as paid_quantity,
+                       oi.unit_price, oi.status, oi.note, oi.item_name
+                FROM order_items oi
+                WHERE oi.id = ?
+            ");
+            $itemQuery->execute([$order_item_id]);
+            $item = $itemQuery->fetch(PDO::FETCH_ASSOC);
+            
+            if (!$item) {
+                $pdo->rollback();
+                jsend(false, null, 'Položka objednávky nenalezena!');
+                exit;
+            }
+            
+            // Reject if item is cancelled
+            if ($item['status'] === 'cancelled') {
+                $pdo->rollback();
+                jsend(false, null, 'Nelze upravit zrušenou položku!');
+                exit;
+            }
+            
+            $current_quantity = intval($item['quantity']);
+            $paid_quantity = intval($item['paid_quantity']);
+            
+            // Validate new quantity is not below paid quantity
+            if ($new_quantity < $paid_quantity) {
+                $pdo->rollback();
+                jsend(false, null, 'Nelze snížit množství pod již zaplacené kusy (' . $paid_quantity . ')!');
+                exit;
+            }
+            
+            // If no change, return success
+            if ($new_quantity == $current_quantity) {
+                $pdo->commit();
+                jsend(true, [
+                    'order_item_id' => $order_item_id,
+                    'quantity' => $new_quantity,
+                    'paid_quantity' => $paid_quantity,
+                    'outstanding' => $new_quantity - $paid_quantity
+                ]);
+                exit;
+            }
+            
+            // Update the quantity
+            $updateQuery = $pdo->prepare("
+                UPDATE order_items 
+                SET quantity = ?, updated_at = NOW()
+                WHERE id = ?
+            ");
+            $updateQuery->execute([$new_quantity, $order_item_id]);
+            
+            // Log the change
+            $logData = [
+                'from' => $current_quantity,
+                'to' => $new_quantity,
+                'diff' => $new_quantity - $current_quantity,
+                'reason' => $reason,
+                'employee' => $employee_name
+            ];
+            
+            $logQuery = $pdo->prepare("
+                INSERT INTO activity_log (action, table_name, record_id, user_info, created_at)
+                VALUES ('adjust_order_item_quantity', 'order_items', ?, ?, NOW())
+            ");
+            $logQuery->execute([$order_item_id, json_encode($logData)]);
+            
+            $pdo->commit();
+            
+            jsend(true, [
+                'order_item_id' => $order_item_id,
+                'quantity' => $new_quantity,
+                'paid_quantity' => $paid_quantity,
+                'outstanding' => $new_quantity - $paid_quantity
+            ]);
+            
+        } catch (Exception $e) {
+            $pdo->rollback();
+            error_log("adjust-order-item-quantity error: " . $e->getMessage());
+            jsend(false, null, 'Chyba při úpravě množství: ' . $e->getMessage());
+        }
+    }
+
     // DEFAULT CASE
     jsend(false, null, 'Neznámá akce: ' . $action);
 
