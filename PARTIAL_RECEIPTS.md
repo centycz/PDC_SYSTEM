@@ -220,11 +220,24 @@ Both systems can coexist, but for best results, use the new `create-receipt` end
 ### Frontend Integration
 Update the billing interface (`pizza/billing.html`) to:
 
-1. Replace calls to `session-bill` with `get-bill` for outstanding item calculation
-2. Replace calls to `pay-items` with `create-receipt` for payment processing
-3. Add UI for partial quantity selection per item
-4. Display prior receipt history
-5. Add reprint functionality
+1. Replace calls to `session-bill` with `get-bill` for outstanding item calculation ✅ COMPLETED
+2. Replace calls to `pay-items` with `create-receipt` for payment processing ✅ COMPLETED
+3. Add UI for partial quantity selection per item ✅ COMPLETED - Unified Payment Modal
+4. Display prior receipt history ✅ COMPLETED
+5. Add reprint functionality ✅ COMPLETED
+
+### Unified Payment Modal (Updated Implementation)
+The billing interface now uses a unified payment modal with the following features:
+
+- **Aggregated Item Display**: Items with same name, price, and note are aggregated for cleaner UI
+- **Full vs Partial Payment Toggle**: Users can switch between full payment (pays all outstanding) or partial payment (select specific quantities)
+- **Payload Formats**:
+  - Full payment: `{ items: [] }` (empty array means pay all outstanding)
+  - Partial payment: `{ items: [{ src: 'order_item', item_id: X, pay_qty: Y }] }`
+- **Always Print**: Receipts are always printed (`print: true`), no checkbox needed
+- **Document Type**: Includes `doc_type: 'receipt'` for printer routing
+- **Employee Name**: Pre-filled from localStorage with session API fallback
+- **Fully Paid Tables**: Tables with all items paid show "Uhrazeno" badge and offer reprint/close options
 
 ### Database Performance
 The new indexes ensure optimal performance:
@@ -237,10 +250,22 @@ The new indexes ensure optimal performance:
 1. Run migration: `php scripts/migrate_partial_receipts.php`
 2. Create some test orders with multiple items
 3. Test `get-bill` to see outstanding items
-4. Test `create-receipt` with partial quantities
-5. Verify receipt numbering is sequential
-6. Test full payment (empty items array)
-7. Test reprint functionality
+4. Test unified payment modal with full payment mode (empty items array)
+5. Test unified payment modal with partial payment mode (specific quantities)
+6. Verify receipt numbering is sequential
+7. Test reprint functionality on fully paid tables
+8. Verify fully paid tables show "Uhrazeno" badge
+9. Test employee name persistence in localStorage
+
+### Test Checklist (from PR requirements)
+- [ ] Partial platba (několik itemů se stejným názvem i různou note) → správná alokace pay_qty
+- [ ] Full platba (Vybrat vše) => items: [] na drátě (ověřit v Network devtools)
+- [ ] Sekvenční dvě partial platby + závěrečná full → stůl badge Uhrazeno
+- [ ] Změna platební metody (cash/card) se propíše do receipt a tisk payloadu
+- [ ] Reprint poslední účtenky funguje; zvýší reprint_count
+- [ ] Stůl bez outstanding se neztrácí ihned (zobrazen s Uhrazeno, zmizí až po refreshu / další logice mimo scope)
+- [ ] Odstraněny legacy funkce – ve zdroji není showSplitModal ani payAll
+- [ ] Edge race: mezitím zaplaceno jiným klientem -> backend chyba -> front-end reload + toast
 
 ### Test Files
 - `/tmp/test_partial_receipts.php` - Unit tests for logic

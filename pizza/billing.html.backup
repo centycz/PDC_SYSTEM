@@ -304,40 +304,6 @@
     background: #721c24 !important;
     color: white !important;
 }
-
-/* Styles for fully paid tables */
-.fully-paid-table {
-    border-color: #28a745 !important;
-    background: #f8fff9 !important;
-}
-
-.paid-badge {
-    background: #28a745;
-    color: white;
-    font-size: 0.8em;
-    padding: 2px 8px;
-    border-radius: 12px;
-    margin-left: 10px;
-    font-weight: bold;
-}
-
-.btn-reprint {
-    background: #28a745;
-    color: white;
-}
-
-.btn-reprint:hover {
-    background: #218838;
-}
-
-.btn-close-table {
-    background: #6c757d;
-    color: white;
-}
-
-.btn-close-table:hover {
-    background: #5a6268;
-}
        
         /* Přidej k existujícím stylům */
 .btn-change-table {
@@ -799,54 +765,36 @@ async function loadTables() {
         console.log('Items count for table', table.table_number, ':', items.length);
         console.log('Items:', items);
         
+        // ✅ ZMĚNA: Zobraz stůl pokud má jakékoliv nezrušené položky
+        if (items.length === 0) {
+            console.log('Skipping table', table.table_number, '- no items');
+            continue;
+        }
+
+        // ✅ OPRAVA: Check if table has any outstanding items
+        const hasOutstandingItems = items.length > 0;
+        console.log('Has outstanding items for table', table.table_number, ':', hasOutstandingItems);
+        
+        if (!hasOutstandingItems) {
+            console.log('No outstanding items for table', table.table_number, '- marking as cleaned if needed');
+            // Note: Table cleanup will be handled by the API when all items are paid
+            continue;
+        }
+
         // Calculate amounts based on get-bill data structure
         let outstandingAmount = 0;
-        const hasOutstandingItems = items.length > 0;
-        
         items.forEach(item => {
             const outstandingQty = getItemValue(item, 'qty_outstanding', 'outstanding_qty', 'outstanding_quantity');
             const unitPrice = parseFloat(getItemValue(item, 'unit_price', 'price')) || 0;
             outstandingAmount += unitPrice * outstandingQty;
         });
 
-        // Check if this table has any items at all (from get-bill API)
-        const billResponseData = await fetch(API + '?action=get-bill&table=' + table.table_number);
-        let hasAnyItemsEver = false;
-        let fullyPaidItems = [];
-        
-        try {
-            const fullBill = await billResponseData.json();
-            if (fullBill.success && fullBill.data && fullBill.data.items) {
-                hasAnyItemsEver = fullBill.data.items.length > 0;
-                // Check for items that were paid (qty_paid > 0)
-                fullyPaidItems = fullBill.data.items.filter(item => {
-                    const paidQty = getItemValue(item, 'qty_paid', 'paid_qty', 'paid_quantity') || 0;
-                    return paidQty > 0;
-                });
-            }
-        } catch(e) {
-            console.error('Error getting full bill for table', table.table_number, ':', e);
-        }
-
-        // Include table in display if:
-        // 1. It has outstanding items (needs payment), OR
-        // 2. It has fully paid items (show with "Uhrazeno" badge temporarily)
-        const shouldShowTable = hasOutstandingItems || fullyPaidItems.length > 0;
-        
-        if (!shouldShowTable) {
-            console.log('Skipping table', table.table_number, '- no items or payments');
-            continue;
-        }
-
         // Set table data for rendering
         table.outstandingAmount = outstandingAmount;
-        table.billItems = items; // Outstanding items only for payment
-        table.fullyPaid = !hasOutstandingItems && fullyPaidItems.length > 0; // Flag for "Uhrazeno" badge
-        table.hasAnyItems = hasAnyItemsEver;
+        table.billItems = items; // Use items directly from get-bill
         
         console.log('Adding table', table.table_number, 'to filtered list');
         console.log('Outstanding amount:', outstandingAmount);
-        console.log('Fully paid?', table.fullyPaid);
         
         filtered.push(table);
     }
@@ -1018,16 +966,12 @@ function getBillItemClass(status) {
     container.innerHTML = tables.map(t => {
         const items = t.billItems || [];
         const outstandingAmount = t.outstandingAmount || 0;
-        const hasAnyItems = t.hasAnyItems || false;
-        const fullyPaid = t.fullyPaid || false;
+        const hasAnyItems = items.length > 0;
 
         return `
-        <div class="order-card ${fullyPaid ? 'fully-paid-table' : ''}">
+        <div class="order-card">
     <div class="order-header">
-        <div class="table-number">
-            ${t.table_code}
-            ${fullyPaid ? '<span class="paid-badge">Uhrazeno</span>' : ''}
-        </div>
+        <div class="table-number">${t.table_code}</div>
         <div class="order-time">${t.status === 'occupied' ? 'Obsazeno' : t.status}</div>
     </div>
     <div class="order-items">
@@ -1049,34 +993,23 @@ function getBillItemClass(status) {
             `;
         }).join('')}
         </ul>
-        <div class="bill-total">
-            ${fullyPaid ? 'Vše zaplaceno' : `Zbývá k úhradě: ${formatCurrency(outstandingAmount)}`}
-        </div>
+        <div class="bill-total">Zbývá k úhradě: ${formatCurrency(outstandingAmount)}</div>
     </div>
     <div class="order-actions">
-        ${fullyPaid ? `
-            <button class="btn btn-reprint" onclick="showReprintOptions(${t.table_number})" style="background: #28a745;">
-                📄 REPRINT
-            </button>
-            <button class="btn btn-close-table" onclick="confirmCloseTable(${t.table_number}, '${t.table_code}')" style="background: #6c757d;">
-                ✖ ZAVŘÍT
-            </button>
-        ` : `
-            <button class="btn btn-pay" onclick="showPaymentModal(${t.table_number}, this)" ${!hasAnyItems ? 'disabled' : ''} style="${!hasAnyItems ? 'opacity:0.5;' : ''}">
-                PLATBA
-            </button>
-            <button class="btn btn-change-table" onclick="showTableChangeModal(${t.table_number}, '${t.table_code}', ${outstandingAmount})">
-                ZMĚNIT STŮL
-            </button>
-        `}
+   <button class="btn btn-pay" onclick="showPaymentModal(${t.table_number}, this)" ${!hasAnyItems ? 'disabled' : ''} style="${!hasAnyItems ? 'opacity:0.5;' : ''}">
+     PLATBA
+   </button>
+
+   <button class="btn btn-change-table" onclick="showTableChangeModal(${t.table_number}, '${t.table_code}', ${outstandingAmount})">
+     ZMĚNIT STŮL
+   </button>
     </div>
 </div>
 `;
     }).join('');
 }
 
-// LEGACY MODAL - COMMENTED OUT - REPLACED BY UNIFIED PAYMENT MODAL
-/*
+// MODAL PRO ZAPLACENÍ CELÉ OBJEDNÁVKY
 function showConfirmModal(table_number) {
     currentTableToPay = table_number;
     
@@ -1152,7 +1085,6 @@ function showConfirmModal(table_number) {
     
     setupPaymentOptionListeners('.payment-option');
 }
-*/
 
 // LEGACY MODAL - REDIRECTS TO NEW UNIFIED MODAL FOR CONSISTENCY
 function showSplitModal(outstandingItems, billData) {
@@ -1160,8 +1092,7 @@ function showSplitModal(outstandingItems, billData) {
     showUnifiedPaymentModal(outstandingItems, billData);
 }
 
-// LEGACY FUNCTION - COMMENTED OUT - REPLACED BY UNIFIED AGGREGATED ITEMS
-/*
+// Helper function to generate outstanding items HTML for receipt modal
 function generateOutstandingItemsHTML(outstandingItems) {
     return outstandingItems.map((item, idx) => {
         const outstandingQty = getItemValue(item, 'qty_outstanding', 'outstanding_qty');
@@ -1185,7 +1116,6 @@ function generateOutstandingItemsHTML(outstandingItems) {
         `;
     }).join('');
 }
-*/
 
 // Helper function to generate receipt history HTML
 function generateReceiptHistoryHTML(priorReceipts) {
@@ -1250,13 +1180,12 @@ function generateReceiptHistoryHTML(priorReceipts) {
 // Setup quantity input listeners
 function setupQuantityInputListeners() {
     document.querySelectorAll('.split-qty-input').forEach(input => {
-        input.addEventListener('input', updateUnifiedModalTotals);
-        input.addEventListener('change', updateUnifiedModalTotals);
+        input.addEventListener('input', calculateSplitTotal);
+        input.addEventListener('change', calculateSplitTotal);
     });
 }
 
-// LEGACY FUNCTION - COMMENTED OUT - REPLACED BY UNIFIED MODAL TOTALS CALCULATION
-/*
+// Calculate total for split modal
 function calculateSplitTotal() {
     const qtyInputs = document.querySelectorAll('.split-qty-input');
     let total = 0;
@@ -1281,7 +1210,6 @@ function calculateSplitTotal() {
         totalDisplay.textContent = `Celkem k úhradě: ${formatCurrency(total)}`;
     }
 }
-*/
 
 // Reprint receipt function
 async function reprintReceipt(receiptNumber) {
@@ -1293,14 +1221,14 @@ async function reprintReceipt(receiptNumber) {
         const result = await response.json();
         
         if (result.success) {
-            alert('Účtenka byla znovu vytištěna.');
+            alert('Reprint odeslán.');
         } else {
-            throw new Error(result.error || 'Chyba při dotištění účtenky');
+            throw new Error(result.error || 'Chyba při reprinta');
         }
         
     } catch (error) {
         console.error('Error reprinting receipt:', error);
-        alert('Chyba při dotištění účtenky: ' + error.message);
+        alert('Chyba při reprinta: ' + error.message);
     }
 }
 
@@ -1325,18 +1253,13 @@ function closeModal() {
     currentTableToPay = null;
 }
 
-// LEGACY FUNCTION - COMMENTED OUT - REPLACED BY UNIFIED PAYMENT MODAL
-/*
 function confirmPayAll() {
     const paymentMethod = document.querySelector('input[name="payment-method"]:checked').value;
     console.log('Způsob platby:', paymentMethod);
     payAll(currentTableToPay, null, paymentMethod);  // ✅ PŘIDÁN paymentMethod
     closeModal();
 }
-*/
 
-// LEGACY FUNCTION - COMMENTED OUT - REPLACED BY UNIFIED PAYMENT MODAL
-/*
 function payAll(table_number, btn, paymentMethod = 'cash') {
     if (btn) { btn.disabled = true; btn.textContent = 'Zpracovávám...'; }
     console.log('PayAll called for table:', table_number, 'payment method:', paymentMethod);
@@ -1394,10 +1317,7 @@ function payAll(table_number, btn, paymentMethod = 'cash') {
         alert('Chyba při načítání účtu: ' + error.message);
     });
 }
-*/
 
-// LEGACY FUNCTION - COMMENTED OUT - REPLACED BY UNIFIED PAYMENT MODAL
-/*
 function paySplit(table_number, btn) {
     lastSplitTable = table_number;
     // Use get-bill endpoint for receipt functionality
@@ -1424,7 +1344,6 @@ function paySplit(table_number, btn) {
         alert('Chyba při načítání účtu: ' + error.message);
     });
 }
-*/
 
 // NEW UNIFIED PAYMENT MODAL FUNCTION
 function showPaymentModal(table_number, btn) {
@@ -1533,7 +1452,13 @@ function showUnifiedPaymentModal(outstandingItems, billData) {
                 <input type="text" id="split-employee-name" value="" placeholder="Zadejte jméno obsluhy" style="width: 100%; padding: 10px; border: 2px solid #ddd; border-radius: 8px;">
             </div>
 
-            <!-- Note: Receipt is always printed, no checkbox needed -->
+            <!-- Print Checkbox -->
+            <div style="text-align: center; margin: 15px 0;">
+                <label style="display: flex; align-items: center; justify-content: center; gap: 10px;">
+                    <input type="checkbox" id="split-print-checkbox" checked>
+                    <strong>📄 Vytisknout účtenku</strong>
+                </label>
+            </div>
 
             <!-- Total Display -->
             <div id="split-total-display" style="background: #ff5858; color: white; padding: 15px; border-radius: 8px; text-align: center; font-size: 1.4em; font-weight: bold; margin: 15px 0;">
@@ -1587,39 +1512,12 @@ function showUnifiedPaymentModal(outstandingItems, billData) {
     
     // Set initial payment mode to full
     setPaymentMode('full');
-    updateUnifiedModalTotals();
-}
-
-// NEW unified modal totals calculation
-function updateUnifiedModalTotals() {
-    const qtyInputs = document.querySelectorAll('.split-qty-input');
-    let total = 0;
-    
-    qtyInputs.forEach((input, index) => {
-        const qty = parseInt(input.value) || 0;
-        const unitPrice = parseFloat(input.dataset.unitPrice) || 0;
-        const amount = qty * unitPrice;
-        
-        // Update individual item amount display
-        const itemTotalSpan = document.getElementById(`item-total-${index}`);
-        if (itemTotalSpan) {
-            itemTotalSpan.textContent = formatCurrency(amount);
-        }
-        
-        total += amount;
-    });
-    
-    // Update main total display
-    const totalDisplay = document.getElementById('split-total-display');
-    if (totalDisplay) {
-        totalDisplay.textContent = `Celkem k úhradě: ${formatCurrency(total)}`;
-    }
-}
+    calculateSplitTotal();
 }
 
 function updateModalTotal() {
     // Legacy function - redirect to new implementation
-    updateUnifiedModalTotals();
+    calculateSplitTotal();
 }
 
 async function confirmSplitPay() {
@@ -1746,12 +1644,12 @@ setInterval(loadTables, 7000);
 
 // Globální funkce
 window.closeModal = closeModal;
-// window.confirmSplitPay = confirmSplitPay; // REMOVED - legacy function
+window.confirmSplitPay = confirmSplitPay;
 window.updateModalTotal = updateModalTotal;
-// window.showConfirmModal = showConfirmModal; // REMOVED - legacy function  
-// window.confirmPayAll = confirmPayAll; // REMOVED - legacy function
+window.showConfirmModal = showConfirmModal;
+window.confirmPayAll = confirmPayAll;
 window.changeQuantity = changeQuantity;
-// window.paySplit = paySplit; // REMOVED - legacy function
+window.paySplit = paySplit;
 window.showPaymentModal = showPaymentModal;
 window.showTableChangeModal = showTableChangeModal;
 window.closeTableChangeModal = closeTableChangeModal;
@@ -1760,12 +1658,6 @@ window.confirmTableChange = confirmTableChange;
 window.reprintReceipt = reprintReceipt;
 window.togglePaymentMode = togglePaymentMode;
 window.confirmUnifiedPay = confirmUnifiedPay;
-// New unified functions
-window.updateUnifiedModalTotals = updateUnifiedModalTotals;
-window.setPaymentMode = setPaymentMode;
-window.showReprintOptions = showReprintOptions;
-window.confirmCloseTable = confirmCloseTable;
-window.closeTableSession = closeTableSession;
 // Proměnné pro zrušení položky
 let cancelItemIds = [];
 let cancelItemData = {};
@@ -2015,10 +1907,9 @@ function aggregateItems(items) {
         const unitPrice = parseFloat(getItemValue(item, 'unit_price', 'price')) || 0;
         const outstandingQty = getItemValue(item, 'qty_outstanding', 'outstanding_qty');
         const itemId = getItemValue(item, 'id', 'item_id');
-        const note = getItemValue(item, 'note', 'note') || '';
         
-        // Create unique key that includes note to differentiate items with same name but different variants
-        const key = `${itemName}_${unitPrice}_${note}`;
+        // Create unique key for same name + price combinations
+        const key = `${itemName}_${unitPrice}`;
         
         if (itemMap.has(key)) {
             const existing = itemMap.get(key);
@@ -2029,7 +1920,6 @@ function aggregateItems(items) {
                 name: itemName,
                 unit_price: unitPrice,
                 qty_outstanding: parseInt(outstandingQty),
-                note: note,
                 ids: [itemId],
                 aggregated: true
             });
@@ -2045,22 +1935,18 @@ function generateAggregatedItemsHTML(aggregatedItems) {
         const outstandingQty = item.qty_outstanding;
         const itemName = item.name;
         const unitPrice = item.unit_price;
-        const note = item.note || '';
         const itemIds = item.ids.join(','); // Store multiple IDs for processing
         
         return `
             <tr>
-                <td style="padding: 8px 12px; text-align: left; border-bottom: 1px solid #ddd;">
-                    ${itemName}
-                    ${note ? `<br><small style="color: #666; font-style: italic;">${note}</small>` : ''}
-                </td>
+                <td style="padding: 8px 12px; text-align: left; border-bottom: 1px solid #ddd;">${itemName}</td>
                 <td style="padding: 8px 12px; text-align: left; border-bottom: 1px solid #ddd;">${formatCurrency(unitPrice)}</td>
                 <td style="padding: 8px 12px; text-align: left; border-bottom: 1px solid #ddd;">${outstandingQty}×</td>
                 <td style="padding: 8px 12px; text-align: left; border-bottom: 1px solid #ddd;">
                     <input type="number" class="split-qty-input" min="0" max="${outstandingQty}" value="0" 
                            data-item-ids="${itemIds}" data-unit-price="${unitPrice}" data-index="${idx}"
                            style="width: 60px; padding: 4px 8px; border: 1px solid #ddd; border-radius: 4px; text-align: center;"
-                           onchange="updateUnifiedModalTotals()">
+                           onchange="calculateSplitTotal()">
                 </td>
                 <td style="padding: 8px 12px; text-align: left; border-bottom: 1px solid #ddd;">
                     <span class="item-total" id="item-total-${idx}">0 Kč</span>
@@ -2106,44 +1992,23 @@ function setPaymentMode(mode) {
         if (header) header.textContent = 'K úhradě';
     }
     
-    updateUnifiedModalTotals();
+    calculateSplitTotal();
 }
 
-// Pre-fill employee name from localStorage with session fallback
+// Pre-fill employee name from session
 async function prefillEmployeeName() {
-    const employeeNameInput = document.getElementById('split-employee-name');
-    if (!employeeNameInput) return;
-    
-    // First try localStorage
-    const storedEmployeeName = localStorage.getItem('employee_name');
-    if (storedEmployeeName && storedEmployeeName.trim()) {
-        employeeNameInput.value = storedEmployeeName.trim();
-        return;
-    }
-    
-    // Fallback to session API
     try {
         const response = await fetch('/pizza/api/get-session-user.php');
         if (response.ok) {
             const data = await response.json();
             if (data.success && data.full_name) {
-                employeeNameInput.value = data.full_name;
-                // Save to localStorage for next time
-                localStorage.setItem('employee_name', data.full_name);
+                document.getElementById('split-employee-name').value = data.full_name;
             }
         }
     } catch (error) {
         console.log('Could not fetch session user info:', error);
         // Not critical - user can still enter name manually
     }
-    
-    // Add event listener to save employee name to localStorage when changed
-    employeeNameInput.addEventListener('blur', function() {
-        const name = this.value.trim();
-        if (name) {
-            localStorage.setItem('employee_name', name);
-        }
-    });
 }
 
 // New unified payment confirmation function
@@ -2167,62 +2032,51 @@ async function confirmUnifiedPay() {
             return;
         }
         
-        // Check if we're in full payment mode
-        const isFullPayment = document.getElementById('full-payment-btn').classList.contains('active');
+        // Get print option
+        const printReceipt = document.getElementById('split-print-checkbox').checked;
         
-        let selectedItems = [];
+        // Collect selected items and quantities
+        const selectedItems = [];
+        document.querySelectorAll('.split-qty-input').forEach((input, index) => {
+            const qty = parseInt(input.value) || 0;
+            if (qty > 0) {
+                const itemIds = input.dataset.itemIds.split(',');
+                const unitPrice = parseFloat(input.dataset.unitPrice);
+                
+                // For aggregated items, we need to distribute quantities across individual IDs
+                const qtyPerItem = Math.floor(qty / itemIds.length);
+                const remainder = qty % itemIds.length;
+                
+                itemIds.forEach((itemId, idIndex) => {
+                    const itemQty = qtyPerItem + (idIndex < remainder ? 1 : 0);
+                    if (itemQty > 0) {
+                        selectedItems.push({
+                            item_id: parseInt(itemId),
+                            quantity: itemQty
+                        });
+                    }
+                });
+            }
+        });
         
-        if (isFullPayment) {
-            // Full payment mode: items should be empty array
-            selectedItems = [];
-        } else {
-            // Partial payment mode: collect selected items and quantities
-            document.querySelectorAll('.split-qty-input').forEach((input) => {
-                const qty = parseInt(input.value) || 0;
-                if (qty > 0) {
-                    const itemIds = input.dataset.itemIds.split(',');
-                    
-                    // For aggregated items, distribute quantities across individual IDs
-                    const qtyPerItem = Math.floor(qty / itemIds.length);
-                    const remainder = qty % itemIds.length;
-                    
-                    itemIds.forEach((itemId, idIndex) => {
-                        const itemQty = qtyPerItem + (idIndex < remainder ? 1 : 0);
-                        if (itemQty > 0) {
-                            selectedItems.push({
-                                src: 'order_item',
-                                item_id: parseInt(itemId),
-                                pay_qty: itemQty
-                            });
-                        }
-                    });
-                }
-            });
-        }
-        
-        // For partial payment, validate that we have items selected
-        if (!isFullPayment && selectedItems.length === 0) {
+        if (selectedItems.length === 0) {
             alert('Prosím vyberte alespoň jednu položku k platbě');
             createBtn.disabled = false;
             createBtn.textContent = 'ZAPLATIT';
             return;
         }
         
-        // Create receipt payload
-        const receiptPayload = {
-            table: lastSplitTable,
-            payment_method: paymentMethod,
-            employee_name: employeeName,
-            print: true, // Always print receipts
-            doc_type: 'receipt', // Specify document type for printer routing
-            items: selectedItems
-        };
-        
         // Create receipt
         const response = await fetch(API + '?action=create-receipt', {
             method: 'POST',
             headers: {'Content-Type': 'application/json'},
-            body: JSON.stringify(receiptPayload)
+            body: JSON.stringify({
+                table: lastSplitTable,
+                payment_method: paymentMethod,
+                employee_name: employeeName,
+                print: printReceipt,
+                items: selectedItems
+            })
         });
         
         const result = await response.json();
@@ -2232,7 +2086,7 @@ async function confirmUnifiedPay() {
         }
         
         const receiptNumber = result.data.receipt_number || result.data.number;
-        alert(`Účtenka #${receiptNumber} byla úspěšně vystavena a vytištěna.`);
+        alert(`Účtenka #${receiptNumber} byla úspěšně vystavena${printReceipt ? ' a vytištěna' : ''}.`);
         
         // Close modal and reload tables
         closeModal();
@@ -2264,64 +2118,6 @@ async function confirmUnifiedPay() {
         // Reset button state
         createBtn.disabled = false;
         createBtn.textContent = 'ZAPLATIT';
-    }
-}
-
-// Show reprint options for fully paid table
-async function showReprintOptions(tableNumber) {
-    try {
-        // Get the last receipt for this table
-        const billResponse = await fetch(API + '?action=get-bill&table=' + tableNumber);
-        if (!billResponse.ok) {
-            throw new Error('Failed to load bill information');
-        }
-        
-        const billResult = await billResponse.json();
-        if (!billResult.success) {
-            throw new Error(billResult.error || 'Failed to load bill information');
-        }
-        
-        const priorReceipts = billResult.data.prior_receipts || [];
-        if (priorReceipts.length === 0) {
-            alert('Žádné účtenky k dotištění');
-            return;
-        }
-        
-        // Get the last receipt
-        const lastReceipt = priorReceipts[priorReceipts.length - 1];
-        const receiptNumber = lastReceipt.receipt_number;
-        
-        const confirmed = confirm(`Znovu vytisknout účtenku #${receiptNumber}?`);
-        if (confirmed) {
-            await reprintReceipt(receiptNumber);
-        }
-        
-    } catch (error) {
-        console.error('Error showing reprint options:', error);
-        alert('Chyba při načítání účtenek: ' + error.message);
-    }
-}
-
-// Confirm closing fully paid table
-function confirmCloseTable(tableNumber, tableCode) {
-    const confirmed = confirm(`Opravdu zavřít stůl ${tableCode}?\n\nTím dojde k ukončení session pro tento stůl.`);
-    if (confirmed) {
-        closeTableSession(tableNumber);
-    }
-}
-
-// Close table session (placeholder - would need backend implementation)
-async function closeTableSession(tableNumber) {
-    try {
-        // This would need a backend endpoint to close/cleanup the table session
-        console.log('Closing table session for table:', tableNumber);
-        alert('Zavírání stolů zatím není implementováno na backendu.');
-        
-        // For now, just reload the tables to refresh the display
-        loadTables();
-    } catch (error) {
-        console.error('Error closing table session:', error);
-        alert('Chyba při zavírání stolu: ' + error.message);
     }
 }
 
