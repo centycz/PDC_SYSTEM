@@ -5,13 +5,22 @@ This implementation adds partial receipt functionality to the PDC_SYSTEM, allowi
 
 ## Database Changes
 
-### 1. Migration Script
-**File:** `scripts/migrate_partial_receipts.php`
+### 1. Migration Scripts
 
-Run this script to apply all required database changes:
+**Primary Migration:** `scripts/migrate_partial_receipts.php`
+**Dependencies:** `scripts/migrate_order_items.php` (ensures order_items table exists)
+
+Run the complete migration suite:
 ```bash
+# Option 1: Run all migrations
+php scripts/migrate_all.php
+
+# Option 2: Run individually (ensure order_items migration runs first)
+php scripts/migrate_order_items.php
 php scripts/migrate_partial_receipts.php
 ```
+
+**Note**: The `migrate_order_items.php` script must run before partial receipts migration to ensure the `order_items` table exists with all required columns. Use `migrate_all.php` for automatic execution in correct order.
 
 ### 2. Schema Changes
 
