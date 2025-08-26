@@ -1009,8 +1009,7 @@ function getBillItemClass(status) {
     }).join('');
 }
 
-// LEGACY MODAL - COMMENTED OUT - REPLACED BY UNIFIED PAYMENT MODAL
-/*
+// MODAL PRO ZAPLACENÍ CELÉ OBJEDNÁVKY
 function showConfirmModal(table_number) {
     currentTableToPay = table_number;
     
@@ -1086,7 +1085,6 @@ function showConfirmModal(table_number) {
     
     setupPaymentOptionListeners('.payment-option');
 }
-*/
 
 // LEGACY MODAL - REDIRECTS TO NEW UNIFIED MODAL FOR CONSISTENCY
 function showSplitModal(outstandingItems, billData) {
@@ -1094,8 +1092,7 @@ function showSplitModal(outstandingItems, billData) {
     showUnifiedPaymentModal(outstandingItems, billData);
 }
 
-// LEGACY FUNCTION - COMMENTED OUT - REPLACED BY UNIFIED AGGREGATED ITEMS
-/*
+// Helper function to generate outstanding items HTML for receipt modal
 function generateOutstandingItemsHTML(outstandingItems) {
     return outstandingItems.map((item, idx) => {
         const outstandingQty = getItemValue(item, 'qty_outstanding', 'outstanding_qty');
@@ -1119,7 +1116,6 @@ function generateOutstandingItemsHTML(outstandingItems) {
         `;
     }).join('');
 }
-*/
 
 // Helper function to generate receipt history HTML
 function generateReceiptHistoryHTML(priorReceipts) {
@@ -1189,8 +1185,7 @@ function setupQuantityInputListeners() {
     });
 }
 
-// LEGACY FUNCTION - COMMENTED OUT - REPLACED BY UNIFIED MODAL TOTALS CALCULATION
-/*
+// Calculate total for split modal
 function calculateSplitTotal() {
     const qtyInputs = document.querySelectorAll('.split-qty-input');
     let total = 0;
@@ -1215,7 +1210,6 @@ function calculateSplitTotal() {
         totalDisplay.textContent = `Celkem k úhradě: ${formatCurrency(total)}`;
     }
 }
-*/
 
 // Reprint receipt function
 async function reprintReceipt(receiptNumber) {
@@ -1259,18 +1253,13 @@ function closeModal() {
     currentTableToPay = null;
 }
 
-// LEGACY FUNCTION - COMMENTED OUT - REPLACED BY UNIFIED PAYMENT MODAL
-/*
 function confirmPayAll() {
     const paymentMethod = document.querySelector('input[name="payment-method"]:checked').value;
     console.log('Způsob platby:', paymentMethod);
     payAll(currentTableToPay, null, paymentMethod);  // ✅ PŘIDÁN paymentMethod
     closeModal();
 }
-*/
 
-// LEGACY FUNCTION - COMMENTED OUT - REPLACED BY UNIFIED PAYMENT MODAL
-/*
 function payAll(table_number, btn, paymentMethod = 'cash') {
     if (btn) { btn.disabled = true; btn.textContent = 'Zpracovávám...'; }
     console.log('PayAll called for table:', table_number, 'payment method:', paymentMethod);
@@ -1328,10 +1317,7 @@ function payAll(table_number, btn, paymentMethod = 'cash') {
         alert('Chyba při načítání účtu: ' + error.message);
     });
 }
-*/
 
-// LEGACY FUNCTION - COMMENTED OUT - REPLACED BY UNIFIED PAYMENT MODAL
-/*
 function paySplit(table_number, btn) {
     lastSplitTable = table_number;
     // Use get-bill endpoint for receipt functionality
@@ -1358,7 +1344,6 @@ function paySplit(table_number, btn) {
         alert('Chyba při načítání účtu: ' + error.message);
     });
 }
-*/
 
 // NEW UNIFIED PAYMENT MODAL FUNCTION
 function showPaymentModal(table_number, btn) {
