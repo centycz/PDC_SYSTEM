@@ -304,6 +304,40 @@
     background: #721c24 !important;
     color: white !important;
 }
+
+/* Styles for fully paid tables */
+.fully-paid-table {
+    border-color: #28a745 !important;
+    background: #f8fff9 !important;
+}
+
+.paid-badge {
+    background: #28a745;
+    color: white;
+    font-size: 0.8em;
+    padding: 2px 8px;
+    border-radius: 12px;
+    margin-left: 10px;
+    font-weight: bold;
+}
+
+.btn-reprint {
+    background: #28a745;
+    color: white;
+}
+
+.btn-reprint:hover {
+    background: #218838;
+}
+
+.btn-close-table {
+    background: #6c757d;
+    color: white;
+}
+
+.btn-close-table:hover {
+    background: #5a6268;
+}
        
         /* Přidej k existujícím stylům */
 .btn-change-table {
@@ -765,36 +799,54 @@ async function loadTables() {
         console.log('Items count for table', table.table_number, ':', items.length);
         console.log('Items:', items);
         
-        // ✅ ZMĚNA: Zobraz stůl pokud má jakékoliv nezrušené položky
-        if (items.length === 0) {
-            console.log('Skipping table', table.table_number, '- no items');
-            continue;
-        }
-
-        // ✅ OPRAVA: Check if table has any outstanding items
-        const hasOutstandingItems = items.length > 0;
-        console.log('Has outstanding items for table', table.table_number, ':', hasOutstandingItems);
-        
-        if (!hasOutstandingItems) {
-            console.log('No outstanding items for table', table.table_number, '- marking as cleaned if needed');
-            // Note: Table cleanup will be handled by the API when all items are paid
-            continue;
-        }
-
         // Calculate amounts based on get-bill data structure
         let outstandingAmount = 0;
+        const hasOutstandingItems = items.length > 0;
+        
         items.forEach(item => {
             const outstandingQty = getItemValue(item, 'qty_outstanding', 'outstanding_qty', 'outstanding_quantity');
             const unitPrice = parseFloat(getItemValue(item, 'unit_price', 'price')) || 0;
             outstandingAmount += unitPrice * outstandingQty;
         });
 
+        // Check if this table has any items at all (from get-bill API)
+        const billResponseData = await fetch(API + '?action=get-bill&table=' + table.table_number);
+        let hasAnyItemsEver = false;
+        let fullyPaidItems = [];
+        
+        try {
+            const fullBill = await billResponseData.json();
+            if (fullBill.success && fullBill.data && fullBill.data.items) {
+                hasAnyItemsEver = fullBill.data.items.length > 0;
+                // Check for items that were paid (qty_paid > 0)
+                fullyPaidItems = fullBill.data.items.filter(item => {
+                    const paidQty = getItemValue(item, 'qty_paid', 'paid_qty', 'paid_quantity') || 0;
+                    return paidQty > 0;
+                });
+            }
+        } catch(e) {
+            console.error('Error getting full bill for table', table.table_number, ':', e);
+        }
+
+        // Include table in display if:
+        // 1. It has outstanding items (needs payment), OR
+        // 2. It has fully paid items (show with "Uhrazeno" badge temporarily)
+        const shouldShowTable = hasOutstandingItems || fullyPaidItems.length > 0;
+        
+        if (!shouldShowTable) {
+            console.log('Skipping table', table.table_number, '- no items or payments');
+            continue;
+        }
+
         // Set table data for rendering
         table.outstandingAmount = outstandingAmount;
-        table.billItems = items; // Use items directly from get-bill
+        table.billItems = items; // Outstanding items only for payment
+        table.fullyPaid = !hasOutstandingItems && fullyPaidItems.length > 0; // Flag for "Uhrazeno" badge
+        table.hasAnyItems = hasAnyItemsEver;
         
         console.log('Adding table', table.table_number, 'to filtered list');
         console.log('Outstanding amount:', outstandingAmount);
+        console.log('Fully paid?', table.fullyPaid);
         
         filtered.push(table);
     }
@@ -966,12 +1018,16 @@ function getBillItemClass(status) {
     container.innerHTML = tables.map(t => {
         const items = t.billItems || [];
         const outstandingAmount = t.outstandingAmount || 0;
-        const hasAnyItems = items.length > 0;
+        const hasAnyItems = t.hasAnyItems || false;
+        const fullyPaid = t.fullyPaid || false;
 
         return `
-        <div class="order-card">
+        <div class="order-card ${fullyPaid ? 'fully-paid-table' : ''}">
     <div class="order-header">
-        <div class="table-number">${t.table_code}</div>
+        <div class="table-number">
+            ${t.table_code}
+            ${fullyPaid ? '<span class="paid-badge">Uhrazeno</span>' : ''}
+        </div>
         <div class="order-time">${t.status === 'occupied' ? 'Obsazeno' : t.status}</div>
     </div>
     <div class="order-items">
@@ -993,16 +1049,26 @@ function getBillItemClass(status) {
             `;
         }).join('')}
         </ul>
-        <div class="bill-total">Zbývá k úhradě: ${formatCurrency(outstandingAmount)}</div>
+        <div class="bill-total">
+            ${fullyPaid ? 'Vše zaplaceno' : `Zbývá k úhradě: ${formatCurrency(outstandingAmount)}`}
+        </div>
     </div>
     <div class="order-actions">
-   <button class="btn btn-pay" onclick="showPaymentModal(${t.table_number}, this)" ${!hasAnyItems ? 'disabled' : ''} style="${!hasAnyItems ? 'opacity:0.5;' : ''}">
-     PLATBA
-   </button>
-
-   <button class="btn btn-change-table" onclick="showTableChangeModal(${t.table_number}, '${t.table_code}', ${outstandingAmount})">
-     ZMĚNIT STŮL
-   </button>
+        ${fullyPaid ? `
+            <button class="btn btn-reprint" onclick="showReprintOptions(${t.table_number})" style="background: #28a745;">
+                📄 REPRINT
+            </button>
+            <button class="btn btn-close-table" onclick="confirmCloseTable(${t.table_number}, '${t.table_code}')" style="background: #6c757d;">
+                ✖ ZAVŘÍT
+            </button>
+        ` : `
+            <button class="btn btn-pay" onclick="showPaymentModal(${t.table_number}, this)" ${!hasAnyItems ? 'disabled' : ''} style="${!hasAnyItems ? 'opacity:0.5;' : ''}">
+                PLATBA
+            </button>
+            <button class="btn btn-change-table" onclick="showTableChangeModal(${t.table_number}, '${t.table_code}', ${outstandingAmount})">
+                ZMĚNIT STŮL
+            </button>
+        `}
     </div>
 </div>
 `;
@@ -1227,14 +1293,14 @@ async function reprintReceipt(receiptNumber) {
         const result = await response.json();
         
         if (result.success) {
-            alert('Reprint odeslán.');
+            alert('Účtenka byla znovu vytištěna.');
         } else {
-            throw new Error(result.error || 'Chyba při reprinta');
+            throw new Error(result.error || 'Chyba při dotištění účtenky');
         }
         
     } catch (error) {
         console.error('Error reprinting receipt:', error);
-        alert('Chyba při reprinta: ' + error.message);
+        alert('Chyba při dotištění účtenky: ' + error.message);
     }
 }
 
@@ -1697,6 +1763,9 @@ window.confirmUnifiedPay = confirmUnifiedPay;
 // New unified functions
 window.updateUnifiedModalTotals = updateUnifiedModalTotals;
 window.setPaymentMode = setPaymentMode;
+window.showReprintOptions = showReprintOptions;
+window.confirmCloseTable = confirmCloseTable;
+window.closeTableSession = closeTableSession;
 // Proměnné pro zrušení položky
 let cancelItemIds = [];
 let cancelItemData = {};
@@ -2195,6 +2264,64 @@ async function confirmUnifiedPay() {
         // Reset button state
         createBtn.disabled = false;
         createBtn.textContent = 'ZAPLATIT';
+    }
+}
+
+// Show reprint options for fully paid table
+async function showReprintOptions(tableNumber) {
+    try {
+        // Get the last receipt for this table
+        const billResponse = await fetch(API + '?action=get-bill&table=' + tableNumber);
+        if (!billResponse.ok) {
+            throw new Error('Failed to load bill information');
+        }
+        
+        const billResult = await billResponse.json();
+        if (!billResult.success) {
+            throw new Error(billResult.error || 'Failed to load bill information');
+        }
+        
+        const priorReceipts = billResult.data.prior_receipts || [];
+        if (priorReceipts.length === 0) {
+            alert('Žádné účtenky k dotištění');
+            return;
+        }
+        
+        // Get the last receipt
+        const lastReceipt = priorReceipts[priorReceipts.length - 1];
+        const receiptNumber = lastReceipt.receipt_number;
+        
+        const confirmed = confirm(`Znovu vytisknout účtenku #${receiptNumber}?`);
+        if (confirmed) {
+            await reprintReceipt(receiptNumber);
+        }
+        
+    } catch (error) {
+        console.error('Error showing reprint options:', error);
+        alert('Chyba při načítání účtenek: ' + error.message);
+    }
+}
+
+// Confirm closing fully paid table
+function confirmCloseTable(tableNumber, tableCode) {
+    const confirmed = confirm(`Opravdu zavřít stůl ${tableCode}?\n\nTím dojde k ukončení session pro tento stůl.`);
+    if (confirmed) {
+        closeTableSession(tableNumber);
+    }
+}
+
+// Close table session (placeholder - would need backend implementation)
+async function closeTableSession(tableNumber) {
+    try {
+        // This would need a backend endpoint to close/cleanup the table session
+        console.log('Closing table session for table:', tableNumber);
+        alert('Zavírání stolů zatím není implementováno na backendu.');
+        
+        // For now, just reload the tables to refresh the display
+        loadTables();
+    } catch (error) {
+        console.error('Error closing table session:', error);
+        alert('Chyba při zavírání stolu: ' + error.message);
     }
 }
 
