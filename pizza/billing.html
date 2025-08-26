@@ -89,6 +89,10 @@ body{
   gap:10px;
 }
 .bill-item:last-child{border-bottom:none;}
+.bill-item.fully-paid-item{
+  opacity:0.7;
+  background:rgba(40, 167, 69, 0.05);
+}
 .bill-left{flex:1;min-width:0;}
 .bill-name{font-weight:600;display:inline-flex;align-items:center;gap:6px;flex-wrap:wrap;}
 .bill-qty{color:#777;margin-left:4px;font-size:12px;}
@@ -575,8 +579,8 @@ function statusInfo(status){
 function escapeHtml(s){
   return (s||'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
 }
-function pickQuantity(item){return Number(getItemValue(item,'quantity','qty','order_qty','original_qty')||0);}
-function pickPaid(item){return Number(getItemValue(item,'paid_quantity','qty_paid','paid')||0);}
+function pickQuantity(item){return Number(getItemValue(item,'qty_total','quantity','qty','order_qty','original_qty')||0);}
+function pickPaid(item){return Number(getItemValue(item,'qty_paid','paid_quantity','paid')||0);}
 
 /* ================== NAČTENÍ TABULEK ================== */
 async function loadTables(){
@@ -653,9 +657,8 @@ function groupForCardDetailed(rawItems){
     map[key].total_quantity+=it.__quantity;
     map[key].total_paid+=it.__paid;
     map[key].qty_outstanding+=it.__outstanding;
-    if(it.__outstanding>0){
-      map[key].statuses[status]=(map[key].statuses[status]||0)+it.__outstanding;
-    }
+    // Track all statuses, not just outstanding ones
+    map[key].statuses[status]=(map[key].statuses[status]||0)+it.__quantity;
     map[key].itemRefs.push({
       id:it.id,
       quantity:it.__quantity,
@@ -675,18 +678,25 @@ function renderTables(){
     return;
   }
   c.innerHTML=tables.map(t=>{
-    const groups=groupForCardDetailed(t.allRawItems).filter(g=>g.qty_outstanding>0);
-    const itemsHtml=groups.length?`<ul class="bill-list">${
-      groups.map(g=>{
+    const allGroups=groupForCardDetailed(t.allRawItems);
+    const outstandingGroups=allGroups.filter(g=>g.qty_outstanding>0);
+    const paidGroups=allGroups.filter(g=>g.qty_outstanding===0 && g.total_quantity>0);
+    
+    let itemsHtml='';
+    
+    if(outstandingGroups.length || paidGroups.length){
+      const groupItems=[...outstandingGroups, ...paidGroups].map(g=>{
         const statusChips=Object.entries(g.statuses).map(([st,qt])=>{
           const inf=statusInfo(st);
           return `<span class="status-badge ${inf.cls}" title="${inf.text}">${inf.text} ${qt}</span>`;
         }).join(' ');
         const remaining=g.total_quantity - g.total_paid;
-        return `<li class="bill-item">
+        const isFullyPaid=g.qty_outstanding===0;
+        
+        return `<li class="bill-item ${isFullyPaid?'fully-paid-item':''}">
           <div class="bill-left">
-            <span class="bill-name">${escapeHtml(g.name)}</span>
-            <span class="bill-qty">(Zbývá: ${g.qty_outstanding} × ${formatCZK(g.unit_price)})</span>
+            <span class="bill-name">${escapeHtml(g.name)} ${isFullyPaid?'<span class="paid-badge">Uhrazeno</span>':''}</span>
+            <span class="bill-qty">${isFullyPaid?`(${g.total_quantity} × ${formatCZK(g.unit_price)})`:`(Zbývá: ${g.qty_outstanding} × ${formatCZK(g.unit_price)})`}</span>
             ${g.note?`<span class="bill-note" title="${escapeHtml(g.note)}">${escapeHtml(g.note)}</span>`:''}
             <div style="margin-top:4px;display:flex;flex-wrap:wrap;gap:4px;">${statusChips}</div>
             <div style="font-size:10px;color:#555;margin-top:2px;">
@@ -694,12 +704,15 @@ function renderTables(){
             </div>
           </div>
           <div style="display:flex;flex-direction:column;align-items:flex-end;gap:6px;">
-            <div style="font-weight:600;">${formatCZK(g.qty_outstanding*g.unit_price)}</div>
+            <div style="font-weight:600;">${isFullyPaid?formatCZK(g.total_quantity*g.unit_price):formatCZK(g.qty_outstanding*g.unit_price)}</div>
             <button class="edit-btn" onclick="openGroupAdjust('${btoa(encodeURIComponent(g.key))}',${t.table_number})">✏️</button>
           </div>
         </li>`;
-      }).join('')
-    }</ul>`:`<div style="color:#28a745;font-style:italic;">Vše uhrazeno</div>`;
+      }).join('');
+      itemsHtml=`<ul class="bill-list">${groupItems}</ul>`;
+    }else{
+      itemsHtml='<div style="color:#28a745;font-style:italic;">Žádné položky</div>';
+    }
 
     return `<div class="order-card ${t.fullyPaid?'fully-paid':''}">
       <div class="order-header">
