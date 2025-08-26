@@ -774,17 +774,21 @@ function renderGroupQtyModal(){
     return `#${r.id} | qty ${r.quantity} (paid ${r.paid_quantity}, free ${free})`;
   }).join('\n');
 
+  // Calculate minimum allowed (0 if all items unpaid, otherwise minQty or 1)
+  const minAllowed = (s.minQty === 0) ? 0 : Math.max(s.minQty, 1);
+  const canDelete = (s.minQty === 0);
+
   bg.innerHTML=`<div class="gqm-wrap">
     <h3 class="gqm-header">Upravit množství – ${escapeHtml(s.name)}</h3>
     <div class="gqm-stats">
       <div><strong>Původní množství:</strong> ${s.originalQty} ks</div>
       <div><strong>Zaplaceno:</strong> ${s.totalPaid} ks</div>
-      <div><strong>Minimum:</strong> ${s.minQty} ks</div>
+      <div><strong>Minimum:</strong> ${s.minQty} ks ${canDelete ? '(můžete smazat - nastavit na 0)' : ''}</div>
       <div><strong>Jednotková cena:</strong> ${formatCZK(s.unitPrice)}</div>
       ${s.note?`<div><em>Poznámka:</em> ${escapeHtml(s.note)}</div>`:''}
     </div>
     <div class="gqm-qtyctrl">
-      <button onclick="changeGroupQty(-1)" ${s.targetQty<=s.minQty?'disabled':''}>−</button>
+      <button onclick="changeGroupQty(-1)" ${s.targetQty<=minAllowed?'disabled':''}>−</button>
       <div class="gqm-qtyval" id="gqmQtyVal">${s.targetQty}</div>
       <button onclick="changeGroupQty(1)">+</button>
     </div>
@@ -813,13 +817,15 @@ function renderGroupQtyModal(){
 function changeGroupQty(delta){
   const s=groupAdjustState;
   const newVal=s.targetQty + delta;
-  if(newVal < s.minQty || newVal < 1) return;
+  // Allow target quantity to be 0 if all items are unpaid (minQty == 0)
+  const minAllowed = (s.minQty === 0) ? 0 : Math.max(s.minQty, 1);
+  if(newVal < minAllowed) return;
   if(newVal > 999) return;
   s.targetQty=newVal;
   document.getElementById('gqmQtyVal').textContent=s.targetQty;
   document.getElementById('gqmAmountVal').textContent=formatCZK(s.targetQty*s.unitPrice);
   const minusBtn=document.querySelector('#groupQtyModalBg .gqm-qtyctrl button');
-  if(minusBtn) minusBtn.disabled=(s.targetQty<=s.minQty);
+  if(minusBtn) minusBtn.disabled=(s.targetQty<=minAllowed);
 }
 
 function closeGroupQtyModal(){
@@ -883,6 +889,12 @@ async function adjustSingleItem(order_item_id,new_quantity,reason,employee_name)
   });
   const j=await resp.json();
   if(!j.success) throw new Error(j.error||j.message||('Úprava selhala (#'+order_item_id+')'));
+  
+  // Handle deleted items by triggering a reload
+  if(j.data && j.data.deleted) {
+    await loadTables();
+  }
+  
   return j;
 }
 

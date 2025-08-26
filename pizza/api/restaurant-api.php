@@ -2747,7 +2747,9 @@ if ($action === 'update-reservation') {
         $body = getJsonBody();
         
         $order_item_id = intval($body['order_item_id'] ?? 0);
-        $new_quantity = intval($body['new_quantity'] ?? 0);
+        // Support alternative parameter names for flexibility
+        $new_quantity = intval($body['new_quantity'] ?? $body['quantity'] ?? 0);
+        $delta = intval($body['delta'] ?? 0);
         $reason = trim($body['reason'] ?? '');
         $employee_name = trim($body['employee_name'] ?? '');
         
@@ -2756,8 +2758,9 @@ if ($action === 'update-reservation') {
             exit;
         }
         
-        if ($new_quantity < 1) {
-            jsend(false, null, 'Nové množství musí být alespoň 1!');
+        // Allow quantity >= 0 (including 0 for deletion)
+        if ($new_quantity < 0) {
+            jsend(false, null, 'Nové množství nesmí být záporné!');
             exit;
         }
         
@@ -2790,6 +2793,46 @@ if ($action === 'update-reservation') {
             $current_quantity = intval($item['quantity']);
             $paid_quantity = intval($item['paid_quantity']);
             
+            // Handle delta calculation if provided
+            if ($delta != 0 && $new_quantity == 0) {
+                $new_quantity = $current_quantity + $delta;
+            }
+            
+            // Ensure new_quantity is still valid after delta calculation
+            if ($new_quantity < 0) {
+                $pdo->rollback();
+                jsend(false, null, 'Nové množství nesmí být záporné!');
+                exit;
+            }
+            
+            // Handle deletion case (new_quantity == 0)
+            if ($new_quantity == 0) {
+                if ($paid_quantity > 0) {
+                    $pdo->rollback();
+                    jsend(false, null, 'Nelze odstranit položku – část je již zaplacena!');
+                    exit;
+                }
+                
+                // Delete the order item
+                $deleteQuery = $pdo->prepare("DELETE FROM order_items WHERE id = ?");
+                $deleteQuery->execute([$order_item_id]);
+                
+                // Log the deletion in order_item_audit
+                $auditQuery = $pdo->prepare("
+                    INSERT INTO order_item_audit (order_item_id, old_quantity, new_quantity, employee_name, reason, changed_at)
+                    VALUES (?, ?, 0, ?, ?, NOW())
+                ");
+                $auditQuery->execute([$order_item_id, $current_quantity, $employee_name, $reason ?: 'Položka odstraněna']);
+                
+                $pdo->commit();
+                
+                jsend(true, [
+                    'order_item_id' => $order_item_id,
+                    'deleted' => true
+                ]);
+                exit;
+            }
+            
             // Validate new quantity is not below paid quantity
             if ($new_quantity < $paid_quantity) {
                 $pdo->rollback();
@@ -2804,7 +2847,8 @@ if ($action === 'update-reservation') {
                     'order_item_id' => $order_item_id,
                     'quantity' => $new_quantity,
                     'paid_quantity' => $paid_quantity,
-                    'outstanding' => $new_quantity - $paid_quantity
+                    'outstanding' => $new_quantity - $paid_quantity,
+                    'deleted' => false
                 ]);
                 exit;
             }
@@ -2817,20 +2861,12 @@ if ($action === 'update-reservation') {
             ");
             $updateQuery->execute([$new_quantity, $order_item_id]);
             
-            // Log the change
-            $logData = [
-                'from' => $current_quantity,
-                'to' => $new_quantity,
-                'diff' => $new_quantity - $current_quantity,
-                'reason' => $reason,
-                'employee' => $employee_name
-            ];
-            
-            $logQuery = $pdo->prepare("
-                INSERT INTO activity_log (action, table_name, record_id, user_info, created_at)
-                VALUES ('adjust_order_item_quantity', 'order_items', ?, ?, NOW())
+            // Log the change in order_item_audit
+            $auditQuery = $pdo->prepare("
+                INSERT INTO order_item_audit (order_item_id, old_quantity, new_quantity, employee_name, reason, changed_at)
+                VALUES (?, ?, ?, ?, ?, NOW())
             ");
-            $logQuery->execute([$order_item_id, json_encode($logData)]);
+            $auditQuery->execute([$order_item_id, $current_quantity, $new_quantity, $employee_name, $reason ?: 'Množství upraveno']);
             
             $pdo->commit();
             
@@ -2838,7 +2874,8 @@ if ($action === 'update-reservation') {
                 'order_item_id' => $order_item_id,
                 'quantity' => $new_quantity,
                 'paid_quantity' => $paid_quantity,
-                'outstanding' => $new_quantity - $paid_quantity
+                'outstanding' => $new_quantity - $paid_quantity,
+                'deleted' => false
             ]);
             
         } catch (Exception $e) {
