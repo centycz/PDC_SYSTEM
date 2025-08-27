@@ -1212,8 +1212,8 @@ function getTableCountText(count) {
                 table: selectedTable,
                 items,
                 customer_name: customerName,
-                employee_name: localStorage.getItem('employee_name'),
-                is_reserved: isReserved
+                employee_name: localStorage.getItem('employee_name')
+                // NOTE: is_reserved is now auto-detected by backend based on reservations
             });
             
             // Disable modal buttons during processing
@@ -1237,8 +1237,8 @@ function getTableCountText(count) {
                         table: selectedTable,
                         items,
                         customer_name: customerName,
-                        employee_name: localStorage.getItem('employee_name'),
-                        is_reserved: isReserved
+                        employee_name: localStorage.getItem('employee_name')
+                        // NOTE: Backend now auto-detects is_reserved based on reservations for table
                     })
                 });
                 
@@ -1280,6 +1280,9 @@ function getTableCountText(count) {
                         showMsg('✅ Objednávka byla uložena, ale nastala chyba: ' + (orderResponse.error || 'Neznámá chyba'));
                         console.warn('Order saved but with secondary error:', orderResponse.error);
                     }
+                    
+                    // TODO: Could display reservation badge if orderResponse.data?.is_reserved === 1
+                    // Example: if (orderResponse.data?.is_reserved) { showMsg('📅 Objednávka byla přiřazena k rezervaci!'); }
                     
                     const kitchenItems = items.filter(item => 
                         ['pizza', 'pasta', 'predkrm', 'dezert'].includes(item.type)

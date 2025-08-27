@@ -365,11 +365,10 @@ try {
         $items          = $body['items'] ?? [];
         $customer_name  = $body['customer_name'] ?? '';
         $employee_name  = $body['employee_name'] ?? '';
-        $is_reserved    = $body['is_reserved'] ?? false;
         
         file_put_contents(
             '/tmp/restaurant_debug.log',
-            "Parsed data: table=$table_number, items=" . count($items) . ", customer=$customer_name, employee=$employee_name, is_reserved=" . ($is_reserved ? 'true' : 'false') . "\n",
+            "Parsed data: table=$table_number, items=" . count($items) . ", customer=$customer_name, employee=$employee_name\n",
             FILE_APPEND
         );
         
@@ -406,12 +405,60 @@ try {
         $final_employee_name = $employee_name ?: ($_SESSION['employee_name'] ?? '');
         file_put_contents('/tmp/restaurant_debug.log', "Final employee name: $final_employee_name\n", FILE_APPEND);
         
+        // AUTOMATIC RESERVATION DETECTION
+        file_put_contents('/tmp/restaurant_debug.log', "AUTO-RES: Starting reservation detection for table $table_number\n", FILE_APPEND);
+        
+        $auto_is_reserved = 0;
+        $reservation_id = null;
+        
+        try {
+            // Check for reservations today for this table with status IN ('seated','pending')
+            $reservation_check = $pdo->prepare("
+                SELECT id, status FROM reservations 
+                WHERE table_number = ? 
+                AND reservation_date = CURDATE()
+                AND status IN ('seated', 'pending')
+                ORDER BY status = 'seated' DESC, start_datetime ASC
+                LIMIT 1
+            ");
+            $reservation_check->execute([$table_number]);
+            $reservation = $reservation_check->fetch(PDO::FETCH_ASSOC);
+            
+            if ($reservation) {
+                $auto_is_reserved = 1;
+                $reservation_id = $reservation['id'];
+                
+                file_put_contents('/tmp/restaurant_debug.log', "AUTO-RES: Found reservation ID {$reservation_id} with status '{$reservation['status']}'\n", FILE_APPEND);
+                
+                // If reservation status is 'pending', update it to 'seated'
+                if ($reservation['status'] === 'pending') {
+                    $update_reservation = $pdo->prepare("
+                        UPDATE reservations 
+                        SET status = 'seated', updated_at = NOW() 
+                        WHERE id = ?
+                    ");
+                    if ($update_reservation->execute([$reservation_id])) {
+                        file_put_contents('/tmp/restaurant_debug.log', "AUTO-RES: Updated reservation {$reservation_id} from pending to seated\n", FILE_APPEND);
+                    } else {
+                        file_put_contents('/tmp/restaurant_debug.log', "AUTO-RES ERROR: Failed to update reservation {$reservation_id} status\n", FILE_APPEND);
+                    }
+                }
+                
+                file_put_contents('/tmp/restaurant_debug.log', "AUTO-RES: Order will be marked as reserved (is_reserved=1)\n", FILE_APPEND);
+            } else {
+                file_put_contents('/tmp/restaurant_debug.log', "AUTO-RES: No matching reservation found, order will not be reserved (is_reserved=0)\n", FILE_APPEND);
+            }
+        } catch (Exception $e) {
+            file_put_contents('/tmp/restaurant_debug.log', "AUTO-RES ERROR: " . $e->getMessage() . "\n", FILE_APPEND);
+            // Continue with is_reserved=0 if there's an error in reservation detection
+        }
+        
         // VLOŽENÍ OBJEDNÁVKY (order_type změněno na 'pizza')
         $stmt = $pdo->prepare("
             INSERT INTO orders (table_session_id, created_at, status, order_type, customer_name, employee_name, is_reserved)
             VALUES (?, NOW(), 'pending', 'pizza', ?, ?, ?)
         ");
-        $result = $stmt->execute([$table_session_id, $customer_name, $final_employee_name, $is_reserved ? 1 : 0]);
+        $result = $stmt->execute([$table_session_id, $customer_name, $final_employee_name, $auto_is_reserved]);
         
         if (!$result) {
             file_put_contents('/tmp/restaurant_debug.log', "ERROR: Failed to insert order\n", FILE_APPEND);
@@ -509,7 +556,9 @@ try {
             'data' => [
                 'order_id' => $order_id,
                 'printed' => $print_success,
-                'print_status' => $print_success ? 'sent' : 'failed'
+                'print_status' => $print_success ? 'sent' : 'failed',
+                'is_reserved' => $auto_is_reserved,
+                'reservation_id' => $reservation_id
             ],
             'error' => null
         ];
