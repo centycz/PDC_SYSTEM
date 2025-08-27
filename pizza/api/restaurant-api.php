@@ -599,6 +599,92 @@ if ($action === 'proxy-print') {
     }
     exit;
 }
+if ($action === 'proxy-reprint') {
+    $body = getJsonBody();
+    if (!isset($body['receipt_number'])) {
+        jsend(false, null, 'Missing receipt_number for proxy-reprint');
+    }
+
+    $rn = (int)$body['receipt_number'];
+    $rpi_url  = 'http://' . PRINTER_RPI_IP . ':' . PRINTER_RPI_PORT . '/reprint';
+    $json_data = json_encode(['receipt_number' => $rn], JSON_UNESCAPED_UNICODE|JSON_UNESCAPED_SLASHES);
+
+    file_put_contents('/tmp/restaurant_debug.log',
+        "PROXY-REPRINT -> $rpi_url body=$json_data\n",
+        FILE_APPEND
+    );
+
+    $response = false;
+    $http_code = 0;
+    $error = '';
+
+    if (function_exists('curl_init')) {
+        $ch = curl_init();
+        curl_setopt($ch, CURLOPT_URL, $rpi_url);
+        curl_setopt($ch, CURLOPT_POST, true);
+        curl_setopt($ch, CURLOPT_POSTFIELDS, $json_data);
+        curl_setopt($ch, CURLOPT_HTTPHEADER, [
+            'Content-Type: application/json',
+            'User-Agent: Restaurant-API/1.0'
+        ]);
+        curl_setopt($ch, CURLOPT_RETURNTRANSFER, true);
+        curl_setopt($ch, CURLOPT_TIMEOUT, PRINTER_TIMEOUT);
+        curl_setopt($ch, CURLOPT_CONNECTTIMEOUT, 3);
+        $response = curl_exec($ch);
+        $http_code = curl_getinfo($ch, CURLINFO_HTTP_CODE);
+        $err = curl_error($ch);
+        if ($err) $error = $err;
+        curl_close($ch);
+    } else {
+        $ctx = stream_context_create([
+            'http' => [
+                'method'  => 'POST',
+                'header'  => "Content-Type: application/json\r\n",
+                'content' => $json_data,
+                'timeout' => PRINTER_TIMEOUT,
+                'ignore_errors' => true
+            ]
+        ]);
+        $response = @file_get_contents($rpi_url, false, $ctx);
+        if ($response !== false) {
+            if (isset($http_response_header[0]) &&
+                preg_match('/HTTP\/\d\.\d\s+(\d+)/', $http_response_header[0], $m)) {
+                $http_code = (int)$m[1];
+            } else {
+                $http_code = 200;
+            }
+        } else {
+            $http_code = 500;
+            $error = 'file_get_contents failed';
+        }
+    }
+
+    file_put_contents('/tmp/restaurant_debug.log',
+        "PROXY-REPRINT result HTTP=$http_code error='$error' resp=" .
+        substr(is_string($response)?$response:'',0,400) . "\n",
+        FILE_APPEND
+    );
+
+    if ($error) {
+        jsend(false, null, "Printer connection error: $error");
+    }
+
+    if ($http_code === 200) {
+        $parsed = json_decode($response, true);
+        if (!is_array($parsed)) {
+            jsend(false, null, 'Invalid JSON from RPi');
+        }
+        // Očekávám, že RPi /reprint vrací {"success":true,...}
+        if (!empty($parsed['success'])) {
+            jsend(true, $parsed);
+        } else {
+            jsend(false, $parsed, 'RPi reprint failed');
+        }
+    } else {
+        jsend(false, null, "Printer HTTP error: $http_code");
+    }
+    exit;
+}
 
     // ADD TABLE
     if ($action === 'add-table') {
@@ -1704,12 +1790,13 @@ if ($action === 'test-curl') {
     $body = getJsonBody();
     $items = $body['items'] ?? [];
     $paymentMethod = $body['payment_method'] ?? 'cash';
-    $tableNumber = intval($body['table_number'] ?? 0);  // ✅ PŘIDÁNO
-    $closeSession = $body['close_session'] ?? false;    // ✅ PŘIDÁNO
+    $tableNumber = intval($body['table_number'] ?? 0);
     
     if (!is_array($items) || empty($items)) {
         jsend(false, null, 'Chybí položky k zaplacení!');
-        exit;
+    }
+    if (!in_array($paymentMethod, ['cash','card'], true)) {
+        jsend(false, null, 'Neplatná platební metoda!');
     }
     
     try {
@@ -1717,126 +1804,98 @@ if ($action === 'test-curl') {
         
         $paidItemIds = [];
         
-        // Zaplatit vybrané položky
         foreach ($items as $item) {
             $itemId = intval($item['id']);
-            $quantity = intval($item['quantity']);
+            if ($itemId <= 0) continue;
             
-            if ($itemId <= 0 || $quantity <= 0) continue;
-            
-            $stmt = $pdo->prepare("
-                UPDATE order_items 
-                SET status = 'paid', 
-                    payment_method = ?,
-                    paid_at = NOW() 
-                WHERE id = ? AND status = 'delivered'
+            // LOCK row
+            $lock = $pdo->prepare("
+                SELECT id, quantity, COALESCE(paid_quantity,0) AS paid_quantity, status
+                FROM order_items
+                WHERE id=? AND status <> 'cancelled'
+                FOR UPDATE
             ");
-            $result = $stmt->execute([$paymentMethod, $itemId]);
+            $lock->execute([$itemId]);
+            $row = $lock->fetch(PDO::FETCH_ASSOC);
+            if (!$row) continue;
             
-            if ($result && $stmt->rowCount() > 0) {
+            $remaining = $row['quantity'] - $row['paid_quantity'];
+            if ($remaining <= 0 && $row['status'] === 'paid') {
+                continue;
+            }
+            
+            // Dorovnat do full (tento endpoint je „zaplať vše“ pro vybrané položky)
+            $upd = $pdo->prepare("
+                UPDATE order_items
+                SET paid_quantity = quantity,
+                    status='paid',
+                    payment_method=?,
+                    paid_at = COALESCE(paid_at, NOW())
+                WHERE id=?
+                  AND status <> 'cancelled'
+            ");
+            $upd->execute([$paymentMethod, $itemId]);
+            if ($upd->rowCount() > 0) {
                 $paidItemIds[] = $itemId;
             }
         }
         
-        // ✅ NOVÁ LOGIKA: Zkontroluj jestli jsou všechny položky zaplacené
+        $fullyPaid = false;
         if ($tableNumber > 0) {
             // Najdi aktivní session
-            $stmt = $pdo->prepare("SELECT id FROM table_sessions WHERE table_number = ? AND is_active = 1 LIMIT 1");
+            $stmt = $pdo->prepare("SELECT id FROM table_sessions WHERE table_number=? AND is_active=1 ORDER BY id DESC LIMIT 1");
             $stmt->execute([$tableNumber]);
             $session = $stmt->fetch(PDO::FETCH_ASSOC);
             
             if ($session) {
                 $sessionId = $session['id'];
                 
-                // Spočítej všechny nezrušené položky v session
+                // Zbývající nezaplacené
                 $stmt = $pdo->prepare("
-                    SELECT COUNT(*) as total_items
+                    SELECT COUNT(*) 
                     FROM order_items oi
                     JOIN orders o ON oi.order_id = o.id
-                    WHERE o.table_session_id = ? 
-                    AND oi.status NOT IN ('cancelled')
+                    WHERE o.table_session_id = ?
+                      AND oi.status <> 'cancelled'
+                      AND (oi.quantity - COALESCE(oi.paid_quantity,0)) > 0
                 ");
                 $stmt->execute([$sessionId]);
-                $totalItems = $stmt->fetchColumn();
+                $remainingItems = $stmt->fetchColumn();
                 
-                // Spočítej zaplacené položky
-                $stmt = $pdo->prepare("
-                    SELECT COUNT(*) as paid_items
-                    FROM order_items oi
-                    JOIN orders o ON oi.order_id = o.id
-                    WHERE o.table_session_id = ? 
-                    AND oi.status = 'paid'
-                ");
-                $stmt->execute([$sessionId]);
-                $paidItems = $stmt->fetchColumn();
-                
-                // ✅ KLÍČOVÁ LOGIKA: Pokud jsou všechny položky zaplacené, uzavři session
-                if ($totalItems > 0 && $paidItems >= $totalItems) {
-                    // Uzavři session
-                    $stmt = $pdo->prepare("
-                        UPDATE table_sessions 
-                        SET is_active = 0, end_time = NOW() 
-                        WHERE id = ?
-                    ");
-                    $stmt->execute([$sessionId]);
+                if ((int)$remainingItems === 0) {
+                    // Uzavřít session + stůl
+                    $pdo->prepare("
+                        UPDATE table_sessions
+                        SET is_active=0, end_time=NOW()
+                        WHERE id=? AND is_active=1
+                    ")->execute([$sessionId]);
                     
-                    // Resetuj stůl
-                    $stmt = $pdo->prepare("
-                        UPDATE restaurant_tables 
-                        SET status = 'free', 
-                            session_start = NULL, 
-                            last_order_at = NULL, 
-                            total_amount = 0.00,
-                            notes = NULL
-                        WHERE table_number = ?
-                    ");
-                    $stmt->execute([$tableNumber]);
-                    
-                    error_log("✅ Session closed for table $tableNumber - all items paid ($paidItems/$totalItems)");
-                    file_put_contents('/tmp/restaurant_debug.log', 
-                        "✅ AUTO-CLOSE: Table $tableNumber session closed - all items paid ($paidItems/$totalItems)\n", 
-                        FILE_APPEND
-                    );
+                    $pdo->prepare("
+                        UPDATE restaurant_tables
+                        SET status='free', session_start=NULL
+                        WHERE table_number=?
+                    ")->execute([$tableNumber]);
                     
                     $fullyPaid = true;
-                } else {
-                    $fullyPaid = false;
-                    error_log("⏳ Table $tableNumber session remains active - paid: $paidItems, total: $totalItems");
-                    file_put_contents('/tmp/restaurant_debug.log', 
-                        "⏳ PARTIAL: Table $tableNumber session remains active - paid: $paidItems, total: $totalItems\n", 
-                        FILE_APPEND
-                    );
                 }
-            } else {
-                $fullyPaid = false;
             }
-        } else {
-            $fullyPaid = false;
         }
         
         $pdo->commit();
         
         jsend(true, [
-            'message' => 'Položky byly úspěšně zaplaceny',
+            'message' => 'Položky zaplaceny',
             'payment_method' => $paymentMethod,
             'paid_items' => count($paidItemIds),
             'paid_item_ids' => $paidItemIds,
-            'table_closed' => $fullyPaid ?? false,  // ✅ PŘIDÁNO
+            'table_closed' => $fullyPaid,
             'table_number' => $tableNumber
         ]);
         
     } catch (Exception $e) {
-        if ($pdo->inTransaction()) {
-            $pdo->rollBack();
-        }
-        
-        error_log("❌ Payment error: " . $e->getMessage());
-        file_put_contents('/tmp/restaurant_debug.log', 
-            "❌ PAYMENT ERROR: " . $e->getMessage() . "\n", 
-            FILE_APPEND
-        );
-        
-        jsend(false, null, 'Chyba při platbě: ' . $e->getMessage());
+        if ($pdo->inTransaction()) $pdo->rollBack();
+        error_log("pay-items error: ".$e->getMessage());
+        jsend(false, null, 'Chyba při platbě: '.$e->getMessage());
     }
 }
 
@@ -2024,105 +2083,139 @@ if ($action === 'test-curl') {
     }
 }
  
- // HISTORIE OBJEDNÁVEK
-    if ($action === 'order-history') {
-        $dateFrom = $_GET['date_from'] ?? date('Y-m-d', strtotime('-7 days'));
-        $dateTo = $_GET['date_to'] ?? date('Y-m-d');
-        $tableNumber = $_GET['table_number'] ?? null;
-        $employeeName = $_GET['employee_name'] ?? null;
+ // HISTORIE ÚČTENEK
+// =======================================
+if ($action === 'receipts-history') {
+    // Filtry
+    $dateFrom = $_GET['date_from'] ?? '';
+    $dateTo   = $_GET['date_to'] ?? '';
+    $tableFilter = $_GET['table_number'] ?? '';
+    $employeeFilter = $_GET['employee_name'] ?? '';
 
-        try {
-            // Základní SQL pro objednávky
-            $sql = "
-                SELECT DISTINCT
-                    o.id,
-                    o.created_at,
-                    o.customer_name,
-                    o.employee_name,
-                    ts.table_number,
-                    rt.table_code
-                FROM orders o
-                JOIN table_sessions ts ON o.table_session_id = ts.id
-                LEFT JOIN restaurant_tables rt ON ts.table_number = rt.table_number
-                WHERE DATE(o.created_at) BETWEEN ? AND ?
-                AND EXISTS (
-                    SELECT 1 FROM order_items oi 
-                    WHERE oi.order_id = o.id 
-                    AND oi.status = 'paid'
-                )
-            ";
-            
-            $params_array = [$dateFrom, $dateTo];
-            
-            // Filtry
-            if ($tableNumber) {
-                $sql .= " AND ts.table_number = ?";
-                $params_array[] = $tableNumber;
-            }
-            
-            if ($employeeName) {
-                $sql .= " AND o.employee_name = ?";
-                $params_array[] = $employeeName;
-            }
-            
-            $sql .= " ORDER BY o.created_at DESC LIMIT 100";
-            
-            $stmt = $pdo->prepare($sql);
-            $stmt->execute($params_array);
-            $orders = $stmt->fetchAll(PDO::FETCH_ASSOC);
-            
-            // Pro každou objednávku načteme položky
-            foreach ($orders as &$order) {
-                $itemsSql = "
-                    SELECT 
-                        oi.item_name,
-                        oi.quantity,
-                        oi.unit_price,
-                        oi.note,
-                        oi.item_type
-                    FROM order_items oi
-                    WHERE oi.order_id = ?
-                    AND oi.status = 'paid'
-                    ORDER BY oi.id
-                ";
-                
-                $itemsStmt = $pdo->prepare($itemsSql);
-                $itemsStmt->execute([$order['id']]);
-                $order['items'] = $itemsStmt->fetchAll(PDO::FETCH_ASSOC);
-            }
-            
-            jsend(true, ['orders' => $orders]);
-            
-        } catch (PDOException $e) {
-            jsend(false, null, $e->getMessage());
-        }
+    // Default (posledních 7 dní) pokud chybí
+    if (!$dateFrom || !$dateTo) {
+        $dateToObj = new DateTime();
+        $dateFromObj = clone $dateToObj;
+        $dateFromObj->modify('-7 days');
+        if (!$dateFrom) $dateFrom = $dateFromObj->format('Y-m-d');
+        if (!$dateTo)   $dateTo   = $dateToObj->format('Y-m-d');
     }
 
-    if ($action === 'employees-list') {
-        try {
-            $sql = "
-                SELECT 
-                    o.employee_name as name,
-                    COUNT(DISTINCT o.id) as order_count
-                FROM orders o
-                WHERE o.employee_name IS NOT NULL 
-                AND o.employee_name != ''
-                AND DATE(o.created_at) >= DATE_SUB(CURDATE(), INTERVAL 30 DAY)
-                GROUP BY o.employee_name
-                ORDER BY order_count DESC
-            ";
-            
-            $stmt = $pdo->prepare($sql);
-            $stmt->execute();
-            $employees = $stmt->fetchAll(PDO::FETCH_ASSOC);
-            
-            jsend(true, ['employees' => $employees]);
-        } catch (PDOException $e) {
-            jsend(false, null, $e->getMessage());
-        }
-    }
-// RESERVATION ENDPOINTS - MUSÍ BÝT PŘED DEFAULT CASE!
+    try {
+        $pdo->beginTransaction(); // (není nutné, ale harmless pro konzistentní READ)
 
+        $sql = "
+            SELECT cp.receipt_number,
+                   cp.table_number,
+                   rt.table_code,
+                   cp.total_amount,
+                   cp.items_count,
+                   cp.paid_at,
+                   cp.payment_method,
+                   cp.employee_name,
+                   cp.reprint_count
+            FROM completed_payments cp
+            LEFT JOIN restaurant_tables rt ON rt.table_number = cp.table_number
+            WHERE 1=1
+        ";
+        $params = [];
+
+        // Datum – paid_at mezi (00:00:00 – 23:59:59)
+        if ($dateFrom) {
+            $sql .= " AND cp.paid_at >= ? ";
+            $params[] = $dateFrom . ' 00:00:00';
+        }
+        if ($dateTo) {
+            $sql .= " AND cp.paid_at <= ? ";
+            $params[] = $dateTo . ' 23:59:59';
+        }
+
+        if ($tableFilter !== '') {
+            $sql .= " AND cp.table_number = ? ";
+            $params[] = (int)$tableFilter;
+        }
+
+        if ($employeeFilter !== '') {
+            $sql .= " AND cp.employee_name = ? ";
+            $params[] = $employeeFilter;
+        }
+
+        $sql .= " ORDER BY cp.paid_at DESC, cp.receipt_number DESC LIMIT 1000";
+
+        $st = $pdo->prepare($sql);
+        $st->execute($params);
+        $rows = $st->fetchAll(PDO::FETCH_ASSOC);
+
+        $pdo->commit();
+        jsend(true, ['receipts' => $rows]);
+    } catch (Exception $e) {
+        if ($pdo->inTransaction()) $pdo->rollBack();
+        jsend(false, null, 'Chyba při načítání historie: '.$e->getMessage());
+    }
+    exit;
+}
+
+// =======================================
+// DETAIL ÚČTENKY
+// =======================================
+if ($action === 'get-receipt') {
+    $receiptNumber = $_GET['receipt_number'] ?? '';
+    if ($receiptNumber === '') {
+        jsend(false, null, 'Chybí číslo účtenky');
+        exit;
+    }
+    try {
+        $st = $pdo->prepare("
+            SELECT cp.*, rt.table_code
+            FROM completed_payments cp
+            LEFT JOIN restaurant_tables rt ON rt.table_number = cp.table_number
+            WHERE cp.receipt_number = ?
+            LIMIT 1
+        ");
+        $st->execute([$receiptNumber]);
+        $rec = $st->fetch(PDO::FETCH_ASSOC);
+        if (!$rec) {
+            jsend(false, null, 'Účtenka nenalezena');
+            exit;
+        }
+        // items_json
+        $items = json_decode($rec['items_json'], true) ?: [];
+        unset($rec['items_json']);
+        $rec['items'] = $items;
+        jsend(true, $rec);
+    } catch (Exception $e) {
+        jsend(false, null, 'Chyba: '.$e->getMessage());
+    }
+    exit;
+}
+
+// =======================================
+// REPRINT ÚČTENKY
+// =======================================
+
+
+// =======================================
+// SEZNAM ZAMĚSTNANCŮ PRO FILTR
+// =======================================
+if ($action === 'employees-list') {
+    try {
+        // Můžeš upravit zdroj – tady z completed_payments (kdo dělal platby)
+        $st = $pdo->query("
+            SELECT employee_name AS name,
+                   COUNT(*) AS receipt_count,
+                   SUM(total_amount) AS total_turnover
+            FROM completed_payments
+            WHERE employee_name IS NOT NULL AND employee_name <> ''
+            GROUP BY employee_name
+            ORDER BY employee_name
+        ");
+        $rows = $st->fetchAll(PDO::FETCH_ASSOC);
+        jsend(true, ['employees' => $rows]);
+    } catch (Exception $e) {
+        jsend(false, null, 'Chyba employees-list: '.$e->getMessage());
+    }
+    exit;
+}
 // Add reservation
 if ($action === 'add-reservation') {
     $body = getJsonBody();
@@ -2513,174 +2606,266 @@ if ($action === 'update-reservation') {
         }
     }
 
-    // CREATE RECEIPT - Process partial payment with optional printing
-    if ($action === 'create-receipt') {
-        $body = getJsonBody();
-        
-        $table_number = intval($body['table'] ?? 0);
-        $payment_method = $body['payment_method'] ?? 'cash';
-        $employee_name = $body['employee_name'] ?? null;
-        $print_receipt = $body['print'] ?? false;
-        $items = $body['items'] ?? [];
-        
-        if (!$table_number) {
-            jsend(false, null, 'Chybí číslo stolu!');
-            exit;
-        }
-        
-        if (!in_array($payment_method, ['cash', 'card'])) {
-            jsend(false, null, 'Neplatná platební metoda!');
-            exit;
-        }
-        
-        try {
-            $pdo->beginTransaction();
-            
-            // Find active session
-            $sessionQuery = $pdo->prepare("
-                SELECT id FROM table_sessions 
-                WHERE table_number = ? AND is_active = 1 
-                ORDER BY id DESC LIMIT 1
-            ");
-            $sessionQuery->execute([$table_number]);
-            $session = $sessionQuery->fetch(PDO::FETCH_ASSOC);
-            
-            if (!$session) {
-                $pdo->rollback();
-                jsend(false, null, 'Žádná aktivní session pro stůl ' . $table_number);
-                exit;
-            }
-            
-            $session_id = $session['id'];
-            
-            // If items array is empty, treat as full payment of all outstanding items
-            if (empty($items)) {
-                // Get all outstanding items
-                $outstandingQuery = $pdo->prepare("
-                    SELECT oi.id, (oi.quantity - COALESCE(oi.paid_quantity, 0)) as outstanding_qty
-                    FROM order_items oi
-                    JOIN orders o ON oi.order_id = o.id
-                    WHERE o.table_session_id = ? 
-                    AND oi.status NOT IN ('cancelled')
-                    AND (oi.quantity - COALESCE(oi.paid_quantity, 0)) > 0
-                ");
-                $outstandingQuery->execute([$session_id]);
-                $outstandingItems = $outstandingQuery->fetchAll(PDO::FETCH_ASSOC);
-                
-                foreach ($outstandingItems as $item) {
-                    $items[] = [
-                        'src' => 'order_item',
-                        'item_id' => $item['id'],
-                        'pay_qty' => $item['outstanding_qty']
-                    ];
-                }
-            }
-            
-            $receiptItems = [];
-            $totalAmount = 0;
-            
-            // Process each item
-            foreach ($items as $item) {
-                $item_id = intval($item['item_id'] ?? 0);
-                $pay_qty = intval($item['pay_qty'] ?? 0);
-                
-                if ($item_id <= 0 || $pay_qty <= 0) {
-                    continue;
-                }
-                
-                // Validate and update order item
-                $validateQuery = $pdo->prepare("
-                    SELECT oi.item_name, oi.unit_price, oi.quantity, COALESCE(oi.paid_quantity, 0) as paid_quantity
-                    FROM order_items oi
-                    JOIN orders o ON oi.order_id = o.id
-                    WHERE oi.id = ? AND o.table_session_id = ?
-                    AND oi.status NOT IN ('cancelled')
-                ");
-                $validateQuery->execute([$item_id, $session_id]);
-                $itemData = $validateQuery->fetch(PDO::FETCH_ASSOC);
-                
-                if (!$itemData) {
-                    $pdo->rollback();
-                    jsend(false, null, "Order item $item_id not found or invalid");
-                    exit;
-                }
-                
-                $outstandingQty = $itemData['quantity'] - $itemData['paid_quantity'];
-                if ($pay_qty > $outstandingQty) {
-                    $pdo->rollback();
-                    jsend(false, null, "Cannot pay $pay_qty of item {$itemData['item_name']}, only $outstandingQty outstanding");
-                    exit;
-                }
-                
-                // Update paid quantity
-                $updateQuery = $pdo->prepare("
-                    UPDATE order_items 
-                    SET paid_quantity = COALESCE(paid_quantity, 0) + ?
-                    WHERE id = ?
-                ");
-                $updateQuery->execute([$pay_qty, $item_id]);
-                
-                $receiptItems[] = [
-                    'name' => $itemData['item_name'],
-                    'unit_price' => floatval($itemData['unit_price']),
-                    'quantity' => $pay_qty,
-                    'total_price' => floatval($itemData['unit_price']) * $pay_qty
-                ];
-                
-                $totalAmount += floatval($itemData['unit_price']) * $pay_qty;
-            }
-            
-            if (empty($receiptItems)) {
-                $pdo->rollback();
-                jsend(false, null, 'Žádné platné položky k zaplacení!');
-                exit;
-            }
-            
-            // Generate receipt number
-            $pdo->exec("UPDATE counters SET current_value = current_value + 1 WHERE name = 'receipt'");
-            $receiptQuery = $pdo->query("SELECT current_value FROM counters WHERE name = 'receipt'");
-            $receiptNumber = $receiptQuery->fetchColumn();
-            
-            // Create receipt record
-            $printedAt = $print_receipt ? 'NOW()' : 'NULL';
-            $insertReceiptQuery = $pdo->prepare("
-                INSERT INTO completed_payments (
-                    receipt_number, table_number, session_id, total_amount, items_count,
-                    paid_at, payment_method, employee_name, items_json, printed_at, reprint_count
-                ) VALUES (?, ?, ?, ?, ?, NOW(), ?, ?, ?, $printedAt, 0)
-            ");
-            
-            $insertReceiptQuery->execute([
-                $receiptNumber,
-                $table_number,
-                $session_id,
-                $totalAmount,
-                count($receiptItems),
-                $payment_method,
-                $employee_name,
-                json_encode($receiptItems)
-            ]);
-            
-            $pdo->commit();
-            
-            jsend(true, [
-                'receipt_number' => $receiptNumber,
-                'table_number' => $table_number,
-                'total_amount' => $totalAmount,
-                'items_count' => count($receiptItems),
-                'items' => $receiptItems,
-                'payment_method' => $payment_method,
-                'employee_name' => $employee_name,
-                'printed' => $print_receipt,
-                'paid_at' => date('Y-m-d H:i:s')
-            ]);
-            
-        } catch (Exception $e) {
-            $pdo->rollback();
-            error_log("create-receipt error: " . $e->getMessage());
-            jsend(false, null, 'Chyba při vytváření účtu: ' . $e->getMessage());
-        }
+   // CREATE RECEIPT - Process partial/full payment with optional printing
+if ($action === 'create-receipt') {
+    $body = getJsonBody();
+    
+    $table_number   = intval($body['table'] ?? 0);
+    $payment_method = $body['payment_method'] ?? 'cash';
+    $employee_name  = $body['employee_name'] ?? null;
+    $print_receipt  = !empty($body['print']);
+    $items          = $body['items'] ?? [];
+    
+    if (!$table_number) {
+        jsend(false, null, 'Chybí číslo stolu!');
     }
+    if (!in_array($payment_method, ['cash','card'], true)) {
+        jsend(false, null, 'Neplatná platební metoda!');
+    }
+    
+    try {
+        $pdo->beginTransaction();
+        
+        // Najdi aktivní session
+        $sessionQuery = $pdo->prepare("
+            SELECT id FROM table_sessions
+            WHERE table_number=? AND is_active=1
+            ORDER BY id DESC LIMIT 1
+            FOR UPDATE
+        ");
+        $sessionQuery->execute([$table_number]);
+        $session = $sessionQuery->fetch(PDO::FETCH_ASSOC);
+        if (!$session) {
+            $pdo->rollBack();
+            jsend(false, null, 'Žádná aktivní session pro stůl '.$table_number);
+        }
+        $session_id = (int)$session['id'];
+        
+        // Pokud není seznam položek => zaplatit vše outstanding
+        if (empty($items)) {
+            $outstandingQuery = $pdo->prepare("
+                SELECT oi.id, (oi.quantity - COALESCE(oi.paid_quantity,0)) AS outstanding_qty
+                FROM order_items oi
+                JOIN orders o ON oi.order_id = o.id
+                WHERE o.table_session_id=?
+                  AND oi.status NOT IN ('cancelled')
+                  AND (oi.quantity - COALESCE(oi.paid_quantity,0)) > 0
+            ");
+            $outstandingQuery->execute([$session_id]);
+            $outstandingItems = $outstandingQuery->fetchAll(PDO::FETCH_ASSOC);
+            foreach ($outstandingItems as $row) {
+                $items[] = [
+                    'src' => 'order_item',
+                    'item_id' => $row['id'],
+                    'pay_qty' => $row['outstanding_qty']
+                ];
+            }
+        }
+        
+        $receiptItems = [];
+        $totalAmount  = 0.0;
+        
+        // Předpřipravený update pro každou položku
+        $updStmt = $pdo->prepare("
+            UPDATE order_items
+            SET 
+                paid_quantity = LEAST(quantity, COALESCE(paid_quantity,0) + :delta),
+                status = CASE 
+                    WHEN (COALESCE(paid_quantity,0) + :delta) >= quantity THEN 'paid'
+                    ELSE status
+                END,
+                payment_method = CASE
+                    WHEN (COALESCE(paid_quantity,0) + :delta) >= quantity THEN :pm
+                    ELSE payment_method
+                END,
+                paid_at = CASE
+                    WHEN (COALESCE(paid_quantity,0) + :delta) >= quantity 
+                         AND (paid_at IS NULL OR paid_at='0000-00-00 00:00:00')
+                    THEN NOW()
+                    ELSE paid_at
+                END
+            WHERE id = :id
+              AND status <> 'cancelled'
+        ");
+        
+        foreach ($items as $item) {
+            $item_id = intval($item['item_id'] ?? 0);
+            $pay_qty = intval($item['pay_qty'] ?? 0);
+            if ($item_id <= 0 || $pay_qty <= 0) continue;
+            
+            // LOCK řádek (FOR UPDATE) – validace
+            $validate = $pdo->prepare("
+                SELECT 
+                    oi.item_name, 
+                    oi.unit_price, 
+                    oi.quantity,
+                    COALESCE(oi.paid_quantity,0) AS paid_quantity
+                FROM order_items oi
+                JOIN orders o ON oi.order_id = o.id
+                WHERE oi.id=? AND o.table_session_id=?
+                  AND oi.status <> 'cancelled'
+                FOR UPDATE
+            ");
+            $validate->execute([$item_id,$session_id]);
+            $row = $validate->fetch(PDO::FETCH_ASSOC);
+            if (!$row) {
+                $pdo->rollBack();
+                jsend(false, null, "Položka $item_id nebyla nalezena / neplatná");
+            }
+            $outstandingQty = $row['quantity'] - $row['paid_quantity'];
+            if ($outstandingQty <= 0) {
+                $pdo->rollBack();
+                jsend(false, null, "Položka '{$row['item_name']}' je už plně uhrazena");
+            }
+            if ($pay_qty > $outstandingQty) {
+                $pdo->rollBack();
+                jsend(false, null, "Nelze uhradit $pay_qty ks '{$row['item_name']}', zbývá $outstandingQty");
+            }
+            
+            // UPDATE s podmíněným nastavením statusu/payment metod
+            $updStmt->execute([
+                ':delta' => $pay_qty,
+                ':pm'    => $payment_method,
+                ':id'    => $item_id
+            ]);
+            
+            $lineTotal = (float)$row['unit_price'] * $pay_qty;
+            $receiptItems[] = [
+                'order_item_id'=> $item_id,
+                'name'        => $row['item_name'],
+                'unit_price'  => (float)$row['unit_price'],
+                'quantity'    => $pay_qty,
+                'total_price' => $lineTotal
+            ];
+            $totalAmount += $lineTotal;
+        }
+        
+        if (empty($receiptItems)) {
+            $pdo->rollBack();
+            jsend(false, null, 'Žádné platné položky k zaplacení!');
+        }
+        
+        // Bezpečnostní „dofiniš“ – kdyby některé položky právě dosáhly full-paid a status ještě nebyl (teoreticky)
+        $pdo->prepare("
+            UPDATE order_items oi
+            JOIN orders o ON oi.order_id = o.id
+            SET 
+                oi.status='paid',
+                oi.payment_method = COALESCE(oi.payment_method, :pm),
+                oi.paid_at = COALESCE(oi.paid_at, NOW())
+            WHERE o.table_session_id = :sid
+              AND oi.status <> 'cancelled'
+              AND oi.status <> 'paid'
+              AND oi.paid_quantity >= oi.quantity
+        ")->execute([
+            ':pm'  => $payment_method,
+            ':sid' => $session_id
+        ]);
+        
+        // Číslování účtenky
+        $pdo->exec("UPDATE counters SET current_value = current_value + 1 WHERE name='receipt'");
+        $receiptQuery  = $pdo->query("SELECT current_value FROM counters WHERE name='receipt'");
+        $receiptNumber = $receiptQuery->fetchColumn();
+        $printedAt     = $print_receipt ? 'NOW()' : 'NULL';
+        
+        $insert = $pdo->prepare("
+            INSERT INTO completed_payments
+            (receipt_number, table_number, session_id, total_amount, items_count,
+             paid_at, payment_method, employee_name, items_json, printed_at, reprint_count)
+            VALUES (?,?,?,?,?, NOW(), ?, ?, ?, $printedAt, 0)
+        ");
+        $insert->execute([
+            $receiptNumber,
+            $table_number,
+            $session_id,
+            $totalAmount,
+            count($receiptItems),
+            $payment_method,
+            $employee_name,
+            json_encode($receiptItems, JSON_UNESCAPED_UNICODE|JSON_UNESCAPED_SLASHES)
+        ]);
+        
+        // Re‑check outstanding
+        $outstandingCheck = $pdo->prepare("
+            SELECT SUM( (oi.quantity - COALESCE(oi.paid_quantity,0)) ) AS remaining
+            FROM order_items oi
+            JOIN orders o ON oi.order_id = o.id
+            WHERE o.table_session_id = ?
+              AND oi.status <> 'cancelled'
+              AND (oi.quantity - COALESCE(oi.paid_quantity,0)) > 0
+        ");
+        $outstandingCheck->execute([$session_id]);
+        $remainingOutstanding = (int)$outstandingCheck->fetchColumn();
+        
+        $tableClosed = false;
+        $reservationFinished = false;
+        
+        if ($remainingOutstanding === 0) {
+            // Označit orders (volitelně)
+            $pdo->prepare("
+                UPDATE orders o
+                SET o.status='paid'
+                WHERE o.table_session_id=? AND o.status<>'paid'
+            ")->execute([$session_id]);
+            
+            // Seated rezervace?
+            $resSel = $pdo->prepare("
+                SELECT id FROM reservations
+                WHERE table_number=? AND status='seated'
+                ORDER BY id ASC
+            ");
+            $resSel->execute([$table_number]);
+            $seatedResList = $resSel->fetchAll(PDO::FETCH_COLUMN);
+            
+            // Uzavřít session + uvolnit stůl
+            $pdo->prepare("
+                UPDATE table_sessions
+                SET is_active=0, end_time=NOW()
+                WHERE id=? AND is_active=1
+            ")->execute([$session_id]);
+            
+            $pdo->prepare("
+                UPDATE restaurant_tables
+                SET status='free', session_start=NULL
+                WHERE table_number=?
+            ")->execute([$table_number]);
+            
+            $tableClosed = true;
+            
+            if (!empty($seatedResList)) {
+                $inIds = implode(',', array_map('intval',$seatedResList));
+                $pdo->exec("
+                    UPDATE reservations
+                    SET status='finished', updated_at=NOW()
+                    WHERE id IN ($inIds)
+                ");
+                $reservationFinished = true;
+            }
+        }
+        
+        $pdo->commit();
+        
+        jsend(true, [
+            'receipt_number'       => $receiptNumber,
+            'table_number'         => $table_number,
+            'total_amount'         => $totalAmount,
+            'items_count'          => count($receiptItems),
+            'items'                => $receiptItems,
+            'payment_method'       => $payment_method,
+            'employee_name'        => $employee_name,
+            'printed'              => $print_receipt,
+            'paid_at'              => date('Y-m-d H:i:s'),
+            'remaining_outstanding'=> $remainingOutstanding,
+            'table_closed'         => $tableClosed,
+            'reservation_finished' => $reservationFinished
+        ]);
+        
+    } catch (Exception $e) {
+        if ($pdo->inTransaction()) $pdo->rollBack();
+        error_log("create-receipt error: ".$e->getMessage());
+        jsend(false, null, 'Chyba při vytváření účtenky: '.$e->getMessage());
+    }
+}
 
     // REPRINT RECEIPT - Reprint an existing receipt by receipt number
     if ($action === 'reprint-receipt') {
@@ -2742,154 +2927,134 @@ if ($action === 'update-reservation') {
         }
     }
 
-    // ADJUST ORDER ITEM QUANTITY - Modify quantity of an existing order item
-    if ($action === 'adjust-order-item-quantity') {
-        $body = getJsonBody();
-        
-        $order_item_id = intval($body['order_item_id'] ?? 0);
-        // Support alternative parameter names for flexibility
-        $new_quantity = intval($body['new_quantity'] ?? $body['quantity'] ?? 0);
-        $delta = intval($body['delta'] ?? 0);
-        $reason = trim($body['reason'] ?? '');
-        $employee_name = trim($body['employee_name'] ?? '');
-        
-        if (!$order_item_id) {
-            jsend(false, null, 'Chybí ID položky objednávky!');
-            exit;
+    // ADJUST ORDER ITEM QUANTITY - Modify quantity of an existing order item (supports soft delete)
+if ($action === 'adjust-order-item-quantity') {
+    $body = getJsonBody();
+    $order_item_id = intval($body['order_item_id'] ?? 0);
+    $new_quantity = isset($body['new_quantity']) ? intval($body['new_quantity']) : null;
+    if ($new_quantity === null && isset($body['quantity'])) {
+        $new_quantity = intval($body['quantity']);
+    }
+    $delta = isset($body['delta']) ? intval($body['delta']) : null;
+    $reason = trim($body['reason'] ?? '');
+    $employee_name = trim($body['employee_name'] ?? '');
+
+    if (!$order_item_id) {
+        jsend(false, null, 'Chybí ID položky objednávky!');
+    }
+
+    try {
+        $pdo->beginTransaction();
+
+        $itemQuery = $pdo->prepare("
+            SELECT oi.id, oi.order_id, oi.quantity, COALESCE(oi.paid_quantity,0) AS paid_quantity,
+                   oi.unit_price, oi.status, oi.note, oi.item_name
+            FROM order_items oi
+            WHERE oi.id = ?
+            FOR UPDATE
+        ");
+        $itemQuery->execute([$order_item_id]);
+        $item = $itemQuery->fetch(PDO::FETCH_ASSOC);
+
+        if (!$item) {
+            $pdo->rollback();
+            jsend(false, null, 'Položka objednávky nenalezena!');
         }
-        
-        // Allow quantity >= 0 (including 0 for deletion)
+
+        if ($item['status'] === 'cancelled') {
+            $pdo->rollback();
+            jsend(false, null, 'Nelze upravit zrušenou položku!');
+        }
+
+        $current_quantity = (int)$item['quantity'];
+        $paid_quantity    = (int)$item['paid_quantity'];
+
+        if ($delta !== null) {
+            $new_quantity = $current_quantity + $delta;
+        }
+        if ($new_quantity === null) {
+            $pdo->rollback();
+            jsend(false, null, 'Chybí new_quantity nebo delta!');
+        }
         if ($new_quantity < 0) {
-            jsend(false, null, 'Nové množství nesmí být záporné!');
-            exit;
+            $pdo->rollback();
+            jsend(false, null, 'Množství nemůže být záporné!');
         }
-        
-        try {
-            $pdo->beginTransaction();
-            
-            // Get current item data
-            $itemQuery = $pdo->prepare("
-                SELECT oi.id, oi.order_id, oi.quantity, COALESCE(oi.paid_quantity, 0) as paid_quantity,
-                       oi.unit_price, oi.status, oi.note, oi.item_name
-                FROM order_items oi
-                WHERE oi.id = ?
-            ");
-            $itemQuery->execute([$order_item_id]);
-            $item = $itemQuery->fetch(PDO::FETCH_ASSOC);
-            
-            if (!$item) {
+
+        // Soft delete
+        if ($new_quantity === 0) {
+            if ($paid_quantity > 0) {
                 $pdo->rollback();
-                jsend(false, null, 'Položka objednávky nenalezena!');
-                exit;
+                jsend(false, null, 'Nelze odstranit položku – část je již zaplacena (' . $paid_quantity . ')!');
             }
-            
-            // Reject if item is cancelled
-            if ($item['status'] === 'cancelled') {
-                $pdo->rollback();
-                jsend(false, null, 'Nelze upravit zrušenou položku!');
-                exit;
-            }
-            
-            $current_quantity = intval($item['quantity']);
-            $paid_quantity = intval($item['paid_quantity']);
-            
-            // Handle delta calculation if provided
-            if ($delta != 0 && $new_quantity == 0) {
-                $new_quantity = $current_quantity + $delta;
-            }
-            
-            // Ensure new_quantity is still valid after delta calculation
-            if ($new_quantity < 0) {
-                $pdo->rollback();
-                jsend(false, null, 'Nové množství nesmí být záporné!');
-                exit;
-            }
-            
-            // Handle deletion case (new_quantity == 0)
-            if ($new_quantity == 0) {
-                if ($paid_quantity > 0) {
-                    $pdo->rollback();
-                    jsend(false, null, 'Nelze odstranit položku – část je již zaplacena!');
-                    exit;
-                }
-                
-                // Delete the order item
-                $deleteQuery = $pdo->prepare("DELETE FROM order_items WHERE id = ?");
-                $deleteQuery->execute([$order_item_id]);
-                
-                // Log the deletion in order_item_audit
-                $auditQuery = $pdo->prepare("
-                    INSERT INTO order_item_audit (order_item_id, old_quantity, new_quantity, employee_name, reason, changed_at)
-                    VALUES (?, ?, 0, ?, ?, NOW())
-                ");
-                $auditQuery->execute([$order_item_id, $current_quantity, $employee_name, $reason ?: 'Položka odstraněna']);
-                
-                $pdo->commit();
-                
-                jsend(true, [
-                    'order_item_id' => $order_item_id,
-                    'deleted' => true
-                ]);
-                exit;
-            }
-            
-            // Validate new quantity is not below paid quantity
-            if ($new_quantity < $paid_quantity) {
-                $pdo->rollback();
-                jsend(false, null, 'Nelze snížit množství pod již zaplacené kusy (' . $paid_quantity . ')!');
-                exit;
-            }
-            
-            // If no change, return success
-            if ($new_quantity == $current_quantity) {
-                $pdo->commit();
-                jsend(true, [
-                    'order_item_id' => $order_item_id,
-                    'quantity' => $new_quantity,
-                    'paid_quantity' => $paid_quantity,
-                    'outstanding' => $new_quantity - $paid_quantity,
-                    'deleted' => false
-                ]);
-                exit;
-            }
-            
-            // Update the quantity
-            $updateQuery = $pdo->prepare("
-                UPDATE order_items 
-                SET quantity = ?, updated_at = NOW()
-                WHERE id = ?
-            ");
-            $updateQuery->execute([$new_quantity, $order_item_id]);
-            
-            // Log the change in order_item_audit
-            $auditQuery = $pdo->prepare("
-                INSERT INTO order_item_audit (order_item_id, old_quantity, new_quantity, employee_name, reason, changed_at)
-                VALUES (?, ?, ?, ?, ?, NOW())
-            ");
-            $auditQuery->execute([$order_item_id, $current_quantity, $new_quantity, $employee_name, $reason ?: 'Množství upraveno']);
-            
+            $upd = $pdo->prepare("UPDATE order_items SET quantity = 0, status='cancelled', updated_at=NOW() WHERE id=?");
+            $upd->execute([$order_item_id]);
+
+            // Audit (uprav podle schématu)
+            $auditCols = "order_item_id, old_quantity, new_quantity, reason, employee_name"; 
+            $auditVals = "?, ?, ?, ?, ?";
+            // Pokud máš sloupce action_type a changed_at, použij raději:
+            // $auditCols .= ", action_type, changed_at";
+            // $auditVals .= ", 'delete', NOW()";
+
+            $audit = $pdo->prepare("INSERT INTO order_item_audit ($auditCols) VALUES ($auditVals)");
+            $audit->execute([$order_item_id, $current_quantity, 0, $reason, $employee_name]);
+
             $pdo->commit();
-            
+            jsend(true, [
+                'order_item_id' => $order_item_id,
+                'quantity' => 0,
+                'deleted' => true,
+                'status' => 'cancelled'
+            ]);
+        }
+
+        if ($new_quantity < $paid_quantity) {
+            $pdo->rollback();
+            jsend(false, null, 'Nelze snížit množství pod již zaplacené kusy (' . $paid_quantity . ')!');
+        }
+
+        if ($new_quantity == $current_quantity) {
+            $pdo->commit();
             jsend(true, [
                 'order_item_id' => $order_item_id,
                 'quantity' => $new_quantity,
-                'paid_quantity' => $paid_quantity,
-                'outstanding' => $new_quantity - $paid_quantity,
-                'deleted' => false
+                'deleted' => false,
+                'status' => $item['status']
             ]);
-            
-        } catch (Exception $e) {
-            $pdo->rollback();
-            error_log("adjust-order-item-quantity error: " . $e->getMessage());
-            jsend(false, null, 'Chyba při úpravě množství: ' . $e->getMessage());
         }
-    }
 
-    // DEFAULT CASE
+        $upd = $pdo->prepare("UPDATE order_items SET quantity = ?, updated_at = NOW() WHERE id = ?");
+        $upd->execute([$new_quantity, $order_item_id]);
+
+        // Audit update
+        $auditCols = "order_item_id, old_quantity, new_quantity, reason, employee_name";
+        $auditVals = "?, ?, ?, ?, ?";
+        // Pokud máš action_type/changed_at:
+        // $auditCols .= ", action_type, changed_at";
+        // $auditVals .= ", 'update', NOW()";
+
+        $audit = $pdo->prepare("INSERT INTO order_item_audit ($auditCols) VALUES ($auditVals)");
+        $audit->execute([$order_item_id, $current_quantity, $new_quantity, $reason, $employee_name]);
+
+        $pdo->commit();
+        jsend(true, [
+            'order_item_id' => $order_item_id,
+            'quantity' => $new_quantity,
+            'deleted' => false,
+            'status' => $item['status']
+        ]);
+    } catch (Exception $e) {
+        if ($pdo->inTransaction()) $pdo->rollback();
+        error_log("adjust-order-item-quantity error: ".$e->getMessage());
+        jsend(false, null, 'Chyba při úpravě množství: '.$e->getMessage());
+    }
+}
+            
+               // DEFAULT CASE
     jsend(false, null, 'Neznámá akce: ' . $action);
 
 } catch (Exception $e) {
     jsend(false, null, $e->getMessage());
 }
 ?>
-

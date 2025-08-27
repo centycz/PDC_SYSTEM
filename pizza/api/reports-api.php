@@ -60,14 +60,28 @@ function addPaymentFilter($sql_base, $params, $payment_method) {
     if ($payment_method === null || $payment_method === '') {
         return [$sql_base, $params];
     }
+    $map = [
+        'hotovost' => 'cash',
+        'karta' => 'card',
+        'cash' => 'cash',
+        'card' => 'card'
+    ];
+    $pm = $map[$payment_method] ?? $payment_method;
     
-    // ✅ MAPOVÁNÍ NA SPRÁVNÉ HODNOTY Z order_items
-    $payment_method_db = ($payment_method === 'hotovost') ? 'cash' : 'card';
+    // Pokud dotaz ještě nemá JOIN na completed_payments, přidej jej.
+    // Bezpečná kontrola: pokud neobsahuje 'completed_payments', tak doplň:
+    if (stripos($sql_base, 'completed_payments') === false) {
+        // Pozor, aby ses nesnažil přidat JOIN doprostřed WHERE; takže to uděláš PŘED tím, než se přidá WHERE.
+        // Jestli tvůj kód skládá $sql_base už i s WHERE, pak musíš upravit „kostru“ dotazu výše, ne tady.
+        // Jednoduchá varianta: vrať marker a sestav JOIN nadřazeně.
+    }
     
-    // ✅ FILTRUJ PODLE order_items.payment_method místo payments tabulky
-    $sql_base .= " AND oi.payment_method = ?";
-    $params[] = $payment_method_db;
-    
+    $sql_base .= " AND EXISTS (
+        SELECT 1 FROM completed_payments cp
+        WHERE cp.session_id = o.table_session_id
+          AND cp.payment_method = ?
+    )";
+    $params[] = $pm;
     return [$sql_base, $params];
 }
 

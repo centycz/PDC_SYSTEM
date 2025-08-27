@@ -881,21 +881,55 @@ async function saveGroupQty(){
   }
 }
 
-async function adjustSingleItem(order_item_id,new_quantity,reason,employee_name){
-  const resp=await fetch(`${API}?action=adjust-order-item-quantity`,{
-    method:'POST',
-    headers:{'Content-Type':'application/json'},
-    body:JSON.stringify({order_item_id,new_quantity,reason,employee_name})
-  });
-  const j=await resp.json();
-  if(!j.success) throw new Error(j.error||j.message||('Úprava selhala (#'+order_item_id+')'));
-  
-  // Handle deleted items by triggering a reload
-  if(j.data && j.data.deleted) {
-    await loadTables();
+async function adjustSingleItem(order_item_id, new_quantity, reason = '', employee_name = '') {
+  // Fallback na localStorage (pokud tam jméno ukládáš)
+  if (!employee_name) {
+    try { employee_name = localStorage.getItem('employee_name') || ''; } catch(e){}
   }
-  
-  return j;
+
+  const payload = { order_item_id, new_quantity, reason, employee_name };
+  console.log('[adjustSingleItem] START', payload);
+
+  let resp;
+  try {
+    resp = await fetch(`${API}?action=adjust-order-item-quantity`, {
+      method: 'POST',
+      headers: { 'Content-Type':'application/json' },
+      body: JSON.stringify(payload)
+    });
+  } catch (netErr) {
+    console.error('[adjustSingleItem] Network error', netErr);
+    throw new Error('Síťová chyba při úpravě položky: ' + netErr.message);
+  }
+
+  let text;
+  try {
+    text = await resp.text();
+  } catch(e) {
+    console.error('[adjustSingleItem] read body error', e);
+    throw new Error('Chyba čtení odpovědi serveru');
+  }
+
+  let data;
+  try {
+    data = text ? JSON.parse(text) : {};
+  } catch(parseErr) {
+    console.error('[adjustSingleItem] JSON parse error. Raw response:', text);
+    throw new Error('Neplatná JSON odpověď serveru: ' + parseErr.message);
+  }
+
+  console.log('[adjustSingleItem] HTTP', resp.status, 'Response:', data);
+
+  if (!resp.ok) {
+    throw new Error(data.error || data.message || ('Server vrátil chybu HTTP ' + resp.status));
+  }
+  if (!data.success) {
+    throw new Error(data.error || data.message || 'Úprava selhala (#'+order_item_id+')');
+  }
+
+  // Reload až po úspěchu
+  await loadTables();
+  return data;
 }
 
 /* ================== BILL PAY LOGIKA ================== */
