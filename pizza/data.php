@@ -28,6 +28,7 @@ if (!in_array($user_role, ['admin', 'ragazzi'])) {
     <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/flatpickr/dist/flatpickr.min.css">
     <script src="https://cdn.jsdelivr.net/npm/flatpickr"></script>
     <script src="https://cdn.jsdelivr.net/npm/flatpickr/dist/l10n/cs.js"></script>
+    <script src="js/report-extensions.js"></script>
     <style>
         .container {
             max-width: 1400px;
@@ -164,6 +165,33 @@ if (!in_array($user_role, ['admin', 'ragazzi'])) {
         .mini-stat .label {
             font-size: 12px;
             opacity: 0.9;
+        }
+
+        .mini-stat.positive {
+            background: linear-gradient(135deg, #28a745 0%, #20c997 100%);
+        }
+
+        .mini-stat.negative {
+            background: linear-gradient(135deg, #dc3545 0%, #c82333 100%);
+        }
+
+        /* Print styles */
+        @media print {
+            .export-buttons, .filters, .nav-header { 
+                display: none !important; 
+            }
+            .charts-container, .stats-grid, .additional-stats {
+                break-inside: avoid;
+                page-break-inside: avoid;
+            }
+            body { 
+                background: white !important; 
+            }
+            .container {
+                box-shadow: none !important;
+                margin: 0 !important;
+                padding: 0 !important;
+            }
         }
 
         table {
@@ -366,6 +394,7 @@ if (!in_array($user_role, ['admin', 'ragazzi'])) {
 
         <div class="export-buttons">
             <button class="export-btn" onclick="exportToCSV()">📄 Export CSV</button>
+            <button class="export-btn" onclick="exportToPDF()">📄 PDF</button>
             <button class="export-btn" onclick="printReport()">🖨️ Tisk</button>
         </div>
 
@@ -461,7 +490,8 @@ if (!in_array($user_role, ['admin', 'ragazzi'])) {
 
         const dnesni = data.data.dnesni_prodeje;
         const stats = calculateAdditionalStats(data);
-const foodCostStats = data.data.food_cost_analysis || null;
+        const extendedMetrics = computeExtendedMetrics(data);
+        const foodCostStats = data.data.food_cost_analysis || null;
         // Pouze filtr kategorií, datum už ne
         const categoryFilter = document.getElementById('categoryFilter').value;
         let filterInfo = '';
@@ -519,6 +549,7 @@ const foodCostStats = data.data.food_cost_analysis || null;
             <div class="label">💹 Čistý zisk</div>
         </div>
     ` : ''}
+    ${generateExtendedStatsHTML(extendedMetrics)}
 </div>
 
                 <div class="product-table-header">Nejprodávanější produkty v období</div>
@@ -969,9 +1000,19 @@ function createProductsChart(products) {
 }
 
     function exportToCSV() {
-        if (!lastData) return;
-        console.log('Export CSV - připraveno k implementaci');
-        alert('CSV export bude implementován v další verzi');
+        if (!lastData) {
+            alert('Nejprve načtěte data');
+            return;
+        }
+        exportToCsvData(lastData);
+    }
+
+    function exportToPDF() {
+        if (!lastData) {
+            alert('Nejprve načtěte data');
+            return;
+        }
+        exportToPdfData(lastData);
     }
 
     function printReport() {
